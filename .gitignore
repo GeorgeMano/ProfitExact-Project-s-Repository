@@ -1,23 +1,31 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+# Secrete și configurări locale
+.env
+.env.*
+!.env.example
+*.local
+
+# Fișiere temporare, uploaduri și loguri
+*.log
+/tmp/
+/uploads/
+/artifacts/
+
+# Editoare și sistem de operare
+.idea/
 .vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+.DS_Store
+[Dd]esktop.ini
+[Tt]humbs.db
+
+# Aplicație web
+/node_modules/
+/.next/
+/out/
+/test-results/
+/playwright-report/
+*.tsbuildinfo
+next-env.d.ts
+
+# Instrucțiuni generate local de instrumentele de dezvoltare
+/AGENTS.md
+/CLAUDE.md
