@@ -88,7 +88,7 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
 
       <section className="audience-section" id="pentru-cine">
         <div><p className="landing-kicker">Cui i se adresează</p><h2>Ridesharing sau Delivery. Alegi ce faci.</h2><p>ProfitExact este construit pentru șoferii și curierii care vor să vadă rezultatul după toate cheltuielile. Detaliile se aleg ulterior, etapă cu etapă, în onboarding.</p></div>
-        <div className="audience-cards"><article><span>Activitate principală</span><h3>Ridesharing</h3><p>Bolt, Uber sau ambele. După crearea contului alegi forma de lucru, vehiculul și datele relevante.</p></article><article><span>Activitate principală</span><h3>Delivery</h3><p>Glovo, Wolt, Bolt Food și alte platforme. După crearea contului configurezi forma de lucru și vehiculul folosit.</p></article></div>
+        <div className="audience-cards"><article><span>Activitate principală</span><h3>Ridesharing</h3><p>Bolt, Uber sau ambele. După crearea contului alegi forma de lucru, vehiculul și datele relevante.</p></article><article><span>Activitate principală</span><h3>Delivery</h3><p>Glovo, Wolt, Bolt Food sau mai multe platforme de delivery. După crearea contului configurezi forma de lucru și vehiculul folosit.</p></article></div>
       </section>
 
       <section className="transparency-section"><div><p className="landing-kicker light">Calcule clare</p><h2>Automatizarea te ajută să introduci datele. Nu inventează rezultatul.</h2></div><div><p>Motorul financiar folosește formule deterministe. Importul din screenshot sau PDF va extrage și structura valorile, dar nimic nu intră în calcul până când nu confirmi.</p><p>Introducerea manuală rămâne permanent disponibilă.</p></div></section>

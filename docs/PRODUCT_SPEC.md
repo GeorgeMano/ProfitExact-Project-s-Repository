@@ -115,6 +115,8 @@ Ordinea inițială aprobată este:
 
 Ramura Delivery folosește aceleași două forme de lucru și aceleași reguli juridice/administrative de bază ca ridesharing. Modelul veniturilor, comisioanelor și cheltuielilor operaționale este definit separat pentru Delivery după obținerea datelor și screenshot-urilor reale.
 
+Într-un context Delivery, utilizatorul poate lucra simultan pe mai multe platforme, inclusiv Glovo, Wolt și Bolt Food. Selectarea platformelor va permite alegerea multiplă; regulile financiare specifice fiecărei platforme vor fi definite înainte de implementarea ramurii Delivery.
+
 Dacă utilizatorul alege `Propriul SRL/PFA` pentru ambele activități, onboarding-ul întreabă dacă este folosită aceeași entitate juridică. Pentru aceeași entitate, costurile administrative fixe comune se configurează o singură dată; pentru entități diferite, configurațiile sunt separate.
 
 Pentru ramura `Ridesharing → Angajat`, ordinea aprobată după pașii comuni este:

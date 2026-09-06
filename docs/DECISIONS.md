@@ -11,6 +11,7 @@ Acest document păstrează numai deciziile care influențează produsul. Detalii
 - Pentru forma proprie se alege SRL sau PFA.
 - Un cont poate avea simultan un context ridesharing și unul delivery, cu rezultate separate.
 - Delivery va avea propriile venituri și costuri operaționale, definite după obținerea datelor reale.
+- Un curier poate selecta și folosi simultan mai multe platforme de delivery în același context Delivery.
 
 ### Localizare și perioade
 
