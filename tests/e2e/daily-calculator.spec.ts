@@ -76,12 +76,13 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(
     page.getByRole("heading", { name: "Adaugă o zi de lucru" }),
   ).toBeVisible();
-  await expect(page.getByText("Îți rămân azi")).toBeVisible();
+  await expect(page.getByText("Calculul nu este gata")).toBeVisible();
   await expect(page.locator(".config-strip").getByText("Pitesti", { exact: true })).toBeVisible();
 
   for (const label of [
-    "Încasări card",
-    "Încasări cash",
+    "Încasări card din curse",
+    "Încasări cash din curse",
+    "Comisionul oprit de aplicație",
     "Compensări",
     "Tips prin aplicație/card",
     "Tips cash",
@@ -90,11 +91,14 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
     "Câte ore ai lucrat azi?",
     "Prețul din ziua respectivă / litru",
   ]) {
-    await expect(page.getByLabel(label)).toHaveValue("0");
+    await expect(page.getByLabel(label)).toHaveValue("");
   }
 
-  await page.getByLabel("Încasări card").fill("500");
-  await page.getByLabel("Încasări cash").fill("400");
+  await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeDisabled();
+
+  await page.getByLabel("Încasări card din curse").fill("500");
+  await page.getByLabel("Încasări cash din curse").fill("400");
+  await page.getByLabel("Comisionul oprit de aplicație").fill("200");
   await page.getByLabel("Compensări").fill("20");
   await page.getByLabel("Tips prin aplicație/card").fill("25");
   await page.getByLabel("Tips cash").fill("15");
@@ -103,6 +107,8 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
     .fill("180");
   await page.getByLabel("Câte ore ai lucrat azi?").fill("8");
   await page.getByLabel("Prețul din ziua respectivă / litru").fill("7.2");
+  await expect(page.getByText("Îți rămân azi")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeEnabled();
 
   await expect(
     page.getByLabel("Câți kilometri ai parcurs pentru activitate azi?"),
@@ -115,7 +121,7 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await page.getByLabel("Ai spălat mașina azi?").check();
   await page.getByLabel("Suma plătită la spălătorie").fill("20");
 
-  await expect(page.getByText("408,77 RON", { exact: true })).toBeVisible();
+  await expect(page.getByText("431,27 RON", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Salvează ziua în săptămână" }).click();
   await expect(page.getByText("Regularizarea săptămânii")).toBeVisible();
   await expect(page.getByText("1", { exact: true }).first()).toBeVisible();

@@ -4,13 +4,17 @@
 
 ## Stare curentă
 
-- Faza curentă este `1A — primul flux funcțional Ridesharing → Angajat`; Faza 0 nu este închisă pentru întregul produs, deoarece specificarea celorlalte profiluri continuă în paralel.
+- Faza curentă este `1B — cont și salvare reală`, în lucru; primul flux local din 1A este implementat. Faza 0 nu este închisă pentru întregul produs, deoarece specificarea celorlalte profiluri continuă în paralel.
 - Specificația funcțională V1 rămâne în lucru.
 - Fluxul prioritar este `Ridesharing → Angajat`.
 - Există o primă aplicație locală cu pagină de prezentare, prototip de creare cont, onboarding, introducere manuală și motor de calcul determinist.
-- Structura inițială Supabase pentru profil, contexte, platforme, vehicul, configurația flotei, costuri, activitate și istoric este pregătită local, dar nu este încă legată de un proiect Supabase real.
-- Fluxul de verificare email + SMS este implementat și are mod demonstrativ local; trimiterea reală sub numele `ProfitExact` necesită conectarea Supabase, un serviciu SMTP configurat cu domeniul platformei și un furnizor SMS cu expeditor alfanumeric aprobat.
-- Salvarea efectivă în cont, uploadurile și plățile nu sunt încă active.
+- Schema este aplicată pe proiectul Supabase `yjoozdilbfrczubnshmj` prin migrări versionate. Serverul era gol înainte de aplicare (zero tabele, zero migrări, zero utilizatori), deci nu a fost nevoie de migrări de reparație.
+- Fluxul de verificare email + SMS există în aplicație, dar nu este încă validat integral cu servicii reale. Sunt necesare configurarea SMTP sub numele `ProfitExact` și un furnizor SMS; expeditorul SMS poate fi număr sau nume acceptat de furnizor, iar mesajul trebuie să menționeze ProfitExact. Modul demo este permis numai în dezvoltare, fără configurare Supabase.
+- Salvarea efectivă în cont, uploadurile și plățile nu sunt încă active în aplicație, dar structura de date există pe server.
+- Rolul de administrator există la nivel de bază de date (`profiles.role`, `public.is_admin()`). Adminul vede utilizatorii, abonamentele și plățile; **nu** are drept de citire pe câștigurile șoferilor. Interfața de administrare rămâne pentru faza 4.
+- Proba de 14 zile și prețul de 24,99 RON/lună sunt în `app_settings` și se aplică automat la crearea profilului, prin `subscriptions`. Prețul se blochează per abonament la înscriere.
+- Statisticile pe oraș se citesc prin `public.get_city_statistics()`, numai pentru orașele cu cel puțin `app_settings.city_stats_min_drivers` șoferi distincți (implicit 5), pe ultimele 90 de zile.
+- Bucket-ul privat `documents` există, cu izolare pe folder `<user_id>/`.
 - Orașul principal este inclus în onboarding ca text liber normalizat și este pregătit pentru istoricul și statisticile publice viitoare.
 
 ## Salvare locală și GitHub
@@ -36,7 +40,8 @@
 - pentru PHEV se introduc separat costul zilnic al benzinei și cel al încărcării electrice; totalul se scade din rezultatul zilei, iar valorile rămân distincte;
 - CIM săptămânal împărțit la 7 zile, cu media lunară calculată per zi lucrată;
 - tips-ul este separat în tips prin aplicație/card și tips cash; regula de lucru este că ambele rămân integral șoferului și nu sunt comisionate, cu validare ulterioară pe screenshot pentru tips-ul prin aplicație;
-- regularizarea cu flota ține cont de card, compensări, tips prin aplicație/card, comisionul Bolt de 25%, comisionul flotei și CIM, fără dublarea comisionului Bolt;
+- regularizarea cu flota ține cont de card, compensări, tips prin aplicație/card, comisionul Bolt introdus exact din screenshot, comisionul flotei și CIM, fără dublarea comisionului Bolt;
+- comisionul oprit de aplicație este obligatoriu; fără el nu se calculează și nu se salvează ziua;
 - RCA/CASCO anual împărțit la 365 sau 366 de zile;
 - rata/leasingul lunar împărțit la zilele calendaristice ale lunii;
 - chiria săptămânală împărțită la 7 zile;
@@ -69,4 +74,14 @@
 
 Prima secțiune funcțională locală pentru profilul `Ridesharing → Angajat` este în verificare. Ea pornește cu onboarding-ul, aplică automat costurile recurente și continuă cu introducerea manuală a unei zile, calculul rezultatului, câștigul pe kilometru, regularizarea cu flota și tratamentul PHEV. Formulele au teste unitare, iar fluxul principal are test de browser.
 
-Următorul pas după verificarea acestui flux de către Product Owner este conectarea unui proiect Supabase de dezvoltare, apoi salvarea onboarding-ului și a zilei în cont.
+Schema este aplicată și izolarea între utilizatori a fost verificată efectiv, nu doar prin citirea politicilor: doi utilizatori de test, fiecare vede numai propriile rânduri, scrierea pe contul altuia este respinsă cu `42501`, iar auto-promovarea la `admin` este blocată. Datele de test au fost șterse.
+
+Următorii pași, în ordine:
+
+1. client Supabase pe server (`createServerClient`) plus `middleware.ts` pentru sesiune — fără asta, orice scriere din aplicație rămâne fragilă;
+2. rute App Router în locul stării unice din `ProfitExactApp`;
+3. reparat cazul contului rămas cu emailul verificat și telefonul neverificat, care astăzi produce un utilizator fără profil;
+4. rotunjirea monetară la 2 zecimale în `lib/finance`, ca ecranul și baza de date să nu diverge;
+5. salvarea onboarding-ului și a zilei, cu scrierea instantaneului în `work_entries.computed_*`.
+
+Conexiunea administrativă se face prin connectorul Supabase din Claude, distinct de conexiunea aplicației.

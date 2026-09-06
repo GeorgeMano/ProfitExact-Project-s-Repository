@@ -20,6 +20,7 @@
 # Aplicație web
 /node_modules/
 /.next/
+/.next-e2e/
 /out/
 /test-results/
 /playwright-report/

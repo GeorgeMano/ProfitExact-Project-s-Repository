@@ -24,6 +24,8 @@ export type DailyEnergyCost =
 export interface DailyResultInput {
   cardEarnings: number;
   cashEarnings: number;
+  /** Suma exactă oprită de aplicație, introdusă din screenshot sau manual. */
+  applicationCommission: number | null;
   compensations: number;
   appTips: number;
   cashTips: number;
@@ -54,8 +56,6 @@ export interface DailyResult {
   fleetBalance: number;
 }
 
-const APPLICATION_COMMISSION_RATE = 0.25;
-
 function nonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -70,8 +70,7 @@ export function calculateDailyResult(input: DailyResultInput): DailyResult {
   const kilometers = nonNegative(input.kilometers);
 
   const grossPlatformEarnings = cardEarnings + cashEarnings;
-  const applicationCommission =
-    grossPlatformEarnings * APPLICATION_COMMISSION_RATE;
+  const applicationCommission = nonNegative(input.applicationCommission ?? 0);
   const platformNetEarnings =
     grossPlatformEarnings - applicationCommission;
 

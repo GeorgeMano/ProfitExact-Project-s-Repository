@@ -56,7 +56,9 @@ Acest document păstrează numai deciziile care influențează produsul. Detalii
 - Din suma gestionată prin flotă se scad comisionul flotei, CIM-ul și celelalte costuri datorate flotei.
 - Balanța se definește ca obligațiile către flotă minus suma gestionată prin flotă.
 - Balanță pozitivă: `Datorezi flotei X RON`; balanță negativă: `Flota îți datorează X RON`.
-- Comisionul Bolt nu se scade din nou dacă valoarea confirmată din screenshot este deja netă după acest comision.
+- Comisionul aplicației se introduce ca sumă exactă din screenshot sau manual, în câmpul `Comisionul oprit de aplicație`; ProfitExact nu aplică automat 25%.
+- Fără această sumă obligatorie, rezultatul și salvarea zilei/perioadei sunt blocate.
+- Comisionul aplicației se scade o singură dată dacă valorile importate sunt brute; dacă screenshotul este deja net, maparea trebuie confirmată înainte de calcul.
 
 ### Bolt + Uber
 

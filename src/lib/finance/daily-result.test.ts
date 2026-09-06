@@ -9,6 +9,7 @@ import {
 const baseInput: DailyResultInput = {
   cardEarnings: 500,
   cashEarnings: 300,
+  applicationCommission: 200,
   compensations: 20,
   appTips: 25,
   cashTips: 15,
@@ -57,12 +58,24 @@ describe("calculateDailyResult", () => {
     expect(result.energyCost).toBe(82.5);
   });
 
+  it("folosește exact comisionul oprit de aplicație din screenshot", () => {
+    const result = calculateDailyResult({
+      ...baseInput,
+      applicationCommission: 128.99,
+      fleetCommission: { type: "percentage", value: 11, base: "net" },
+    });
+
+    expect(result.applicationCommission).toBe(128.99);
+    expect(result.fleetCommission).toBeCloseTo(73.8111);
+  });
+
   it("afișează mesajul simplu aprobat când rezultatul este zero", () => {
     const result = calculateDailyResult({
       ...baseInput,
       cardEarnings: 0,
       cashEarnings: 0,
       compensations: 0,
+      applicationCommission: 0,
       appTips: 0,
       cashTips: 0,
       weeklyCimCost: 0,

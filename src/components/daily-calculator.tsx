@@ -47,7 +47,7 @@ function shortDate(value: string) {
 }
 
 function NumberField({ label, value, onChange, suffix = "RON", step = "0.01", className = "" }: { label: string; value: number; onChange: (value: number) => void; suffix?: string; step?: string; className?: string }) {
-  return <label className={`field ${className}`}><span>{label}</span><span className="input-wrap"><input type="number" min="0" step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /><small>{suffix}</small></span></label>;
+  return <label className={`field ${className}`}><span>{label}</span><span className="input-wrap"><input type="number" min="0" step={step} value={value === 0 ? "" : value} onChange={(event) => onChange(Number(event.target.value))} /><small>{suffix}</small></span></label>;
 }
 
 function DailyExpenseQuestion({ question, label, enabled, value, onToggle, onChange }: { question: string; label: string; enabled: boolean; value: number; onToggle: (enabled: boolean) => void; onChange: (value: number) => void }) {
@@ -66,6 +66,7 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
   const [date, setDate] = useState(todayInRomania);
   const [cardEarnings, setCardEarnings] = useState(0);
   const [cashEarnings, setCashEarnings] = useState(0);
+  const [applicationCommission, setApplicationCommission] = useState<number | null>(null);
   const [compensations, setCompensations] = useState(0);
   const [appTips, setAppTips] = useState(0);
   const [cashTips, setCashTips] = useState(0);
@@ -113,6 +114,7 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
   const result = calculateDailyResult({
     cardEarnings,
     cashEarnings,
+    applicationCommission,
     compensations,
     appTips,
     cashTips,
@@ -131,9 +133,12 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
     recurringFleetCosts: recurringFleetTotal,
     oneOffDailyCosts: oneOffDailyTotal,
   });
-  const resultPerHour = hoursWorked > 0 ? result.result / hoursWorked : null;
+  const canCalculate = applicationCommission !== null && Number.isFinite(applicationCommission);
+  const resultPerHour = canCalculate && hoursWorked > 0 ? result.result / hoursWorked : null;
+  const applicationCommissionLabel = "Comisionul oprit de aplicație";
   const weeklySummary = summarizeWeek(savedDays, date);
   const saveDayInWeek = () => {
+    if (!canCalculate) return;
     setSavedDays((current) =>
       upsertSavedWorkDay(current, {
         date,
@@ -169,8 +174,9 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
       <section className="workspace" aria-label="Calculator zilnic">
         <form className="form-card" onSubmit={(event) => event.preventDefault()}>
           <fieldset className="section-block"><legend>Încasări {platformLabels[config.platform]}</legend><div className="field-grid">
-            <NumberField label="Încasări card" value={cardEarnings} onChange={setCardEarnings} />
-            <NumberField label="Încasări cash" value={cashEarnings} onChange={setCashEarnings} />
+            <NumberField label="Încasări card din curse" value={cardEarnings} onChange={setCardEarnings} />
+            <NumberField label="Încasări cash din curse" value={cashEarnings} onChange={setCashEarnings} />
+            <label className="field"><span>Comisionul oprit de aplicație</span><span className="input-wrap"><input type="number" min="0" step="0.01" required value={applicationCommission ?? ""} placeholder="Suma din aplicație" onChange={(event) => setApplicationCommission(event.target.value === "" ? null : Number(event.target.value))} /><small>RON</small></span></label>
             <NumberField label="Compensări" value={compensations} onChange={setCompensations} />
             <NumberField label="Tips prin aplicație/card" value={appTips} onChange={setAppTips} />
             <NumberField label="Tips cash" value={cashTips} onChange={setCashTips} />
@@ -190,14 +196,14 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
             <DailyExpenseQuestion question="Ai avut o cheltuială de service sau revizie azi?" label="Suma plătită la service" enabled={hadServiceToday} value={serviceCost} onToggle={(enabled) => { setHadServiceToday(enabled); if (!enabled) setServiceCost(0); }} onChange={setServiceCost} />
             <DailyExpenseQuestion question="Ai avut altă taxă sau cheltuială pe traseu azi?" label="Suma plătită — de exemplu acces aeroport" enabled={hadOtherRouteCostToday} value={otherPointCost} onToggle={(enabled) => { setHadOtherRouteCostToday(enabled); if (!enabled) setOtherPointCost(0); }} onChange={setOtherPointCost} />
           </div><p className="helper">Service-ul va fi păstrat și în jurnal cu data, kilometrajul și descrierea intervenției.</p></fieldset>
-          <div className="save-day-panel"><div><strong>Centralizează ziua în săptămână</strong><span>Dacă revii la aceeași dată și salvezi din nou, ziua este actualizată, nu dublată.</span></div><button type="button" onClick={saveDayInWeek}>Salvează ziua în săptămână</button>{lastSavedDate === date ? <p>Ziua de {shortDate(date)} este inclusă în totalul săptămânii.</p> : null}</div>
+          <div className="save-day-panel"><div><strong>Centralizează ziua în săptămână</strong><span>Dacă revii la aceeași dată și salvezi din nou, ziua este actualizată, nu dublată.</span></div><button type="button" onClick={saveDayInWeek} disabled={!canCalculate}>Salvează ziua în săptămână</button>{!canCalculate ? <p>Introdu comisionul oprit de aplicație pentru a calcula și salva ziua.</p> : null}{lastSavedDate === date ? <p>Ziua de {shortDate(date)} este inclusă în totalul săptămânii.</p> : null}</div>
         </form>
 
         <aside className="result-column" aria-live="polite">
-          <section className={`result-card ${result.result < 0 ? "negative" : "positive"}`}><p className="result-label">Îți rămân azi</p><p className="result-value">{money(result.result)} RON</p><p className="result-alert">{formatResultAlert(result)}</p></section>
-          <section className="breakdown-card"><div className="card-heading"><div><p className="eyebrow">Calcul transparent</p><h2>Detaliile zilei</h2></div><span>{date}</span></div><dl className="breakdown-list">
+          <section className={`result-card ${canCalculate ? (result.result < 0 ? "negative" : "positive") : ""}`}>{canCalculate ? <><p className="result-label">Îți rămân azi</p><p className="result-value">{money(result.result)} RON</p><p className="result-alert">{formatResultAlert(result)}</p></> : <><p className="result-label">Calculul nu este gata</p><p className="result-alert">Introdu suma exactă oprită de aplicație pentru această zi.</p></>}</section>
+          {canCalculate ? <section className="breakdown-card"><div className="card-heading"><div><p className="eyebrow">Calcul transparent</p><h2>Detaliile zilei</h2></div><span>{date}</span></div><dl className="breakdown-list">
             <div><dt>Încasări brute</dt><dd>{money(result.grossPlatformEarnings)} RON</dd></div>
-            <div><dt>Comision aplicație (25%)</dt><dd>− {money(result.applicationCommission)} RON</dd></div>
+            <div><dt>{applicationCommissionLabel}</dt><dd>− {money(result.applicationCommission)} RON</dd></div>
             <div><dt>Total câștiguri</dt><dd>{money(result.totalEarnings)} RON</dd></div>
             <div><dt>Ore lucrate</dt><dd>{hoursWorked.toLocaleString("ro-RO")} ore</dd></div>
             {resultPerHour !== null ? <div><dt>Câștig după cheltuieli / oră</dt><dd>{money(resultPerHour)} RON</dd></div> : null}
@@ -207,8 +213,8 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
             {recurringCosts.map((cost) => <div key={cost.id}><dt>{cost.label} · alocat/zi</dt><dd>− {money(cost.dailyAmount)} RON</dd></div>)}
             {pointCosts.filter(([, amount]) => amount > 0).map(([label, amount]) => <div key={label}><dt>{label}</dt><dd>− {money(amount)} RON</dd></div>)}
             <div className="total-row"><dt>Total cheltuieli</dt><dd>− {money(result.totalExpenses)} RON</dd></div>
-          </dl></section>
-          <section className={`fleet-card ${result.fleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea zilei</p><h2>{formatFleetAlert(result.fleetBalance)}</h2><p>Valoarea zilei intră în regularizarea săptămânală numai după salvare.</p></section>
+          </dl></section> : <section className="breakdown-card"><p className="eyebrow">Calcul transparent</p><h2>Detaliile apar după completare</h2><p>Nu folosim automat procentul de 25%. Introdu suma „Comisionul oprit de aplicație” din aplicația Bolt sau din screenshot.</p></section>}
+          {canCalculate ? <section className={`fleet-card ${result.fleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea zilei</p><h2>{formatFleetAlert(result.fleetBalance)}</h2><p>Valoarea zilei intră în regularizarea săptămânală numai după salvare.</p></section> : null}
           <section className={`weekly-card ${weeklySummary.totalFleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea săptămânii</p><p className="weekly-range">{shortDate(weeklySummary.startDate)} – {shortDate(weeklySummary.endDate)}</p><h2>{weeklySummary.days.length ? formatFleetAlert(weeklySummary.totalFleetBalance) : "Nicio zi salvată încă"}</h2><div className="weekly-metrics"><div><span>Zile</span><strong>{weeklySummary.days.length}</strong></div><div><span>Ore</span><strong>{weeklySummary.totalHours.toLocaleString("ro-RO")}</strong></div><div><span>Kilometri</span><strong>{weeklySummary.totalKilometers.toLocaleString("ro-RO")}</strong></div><div><span>Îți rămân</span><strong>{money(weeklySummary.totalResult)} RON</strong></div></div>{weeklySummary.days.length ? <div className="saved-days">{weeklySummary.days.map((day) => <span key={day.date}>{shortDate(day.date)} · {day.hoursWorked.toLocaleString("ro-RO")} ore</span>)}</div> : <p className="weekly-empty">Salvează fiecare zi lucrată; soldul pentru plată se actualizează pe toată săptămâna luni–duminică.</p>}</section>
           <p className="preview-note">Această versiune verifică fluxul și formulele. Salvarea în cont urmează după conectarea proiectului Supabase.</p>
         </aside>

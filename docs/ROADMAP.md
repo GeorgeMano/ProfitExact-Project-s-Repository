@@ -4,13 +4,15 @@
 
 Regulile sunt clarificate înainte de implementarea fiecărui profil. Rămân de definit complet SRL/PFA, Delivery și maparea screenshoturilor reale.
 
-## Faza 1A — Ridesharing → Angajat · faza curentă
+## Faza 1A — Ridesharing → Angajat · primul flux local implementat
 
 Primul flux funcțional: pagină de prezentare, cont demonstrativ, onboarding, introducere manuală zilnică, calcule, costuri recurente și regularizare săptămânală.
 
-## Faza 1B — Cont și salvare reală · următoarea
+## Faza 1B — Cont și salvare reală · faza curentă, în lucru
 
 Conectarea proiectului Supabase de dezvoltare, autentificare reală email/SMS și salvarea sigură a onboarding-ului și activității.
+
+Schema este aplicată pe server prin migrări versionate, cu RLS verificat efectiv. Fundația pentru rolul de administrator, abonament și statistici pe oraș există la nivel de bază de date. Urmează sesiunea pe server, rutele, serviciile email/SMS și persistența efectivă.
 
 ## Faza 1C — Completarea introducerii manuale · planificată
 

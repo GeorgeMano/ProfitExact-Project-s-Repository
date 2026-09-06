@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import {
+  canUseSupabaseDemo,
+  DEMO_VERIFICATION_CODE,
   getSupabaseBrowserClient,
   hasSupabaseConfig,
 } from "@/lib/supabase/client";
@@ -57,10 +59,16 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
     setError("");
     setNotice("");
 
-    if (!hasSupabaseConfig()) {
+    // Local (npm run dev) sărim verificarea reală: nu se trimite email/SMS,
+    // codul acceptat este DEMO_VERIFICATION_CODE.
+    if (canUseSupabaseDemo()) {
       setDemoMode(true);
       setPhase("email-code");
       return;
+    }
+
+    if (!hasSupabaseConfig()) {
+      return setError("Crearea contului nu este disponibilă momentan. Încearcă mai târziu.");
     }
 
     const supabase = getSupabaseBrowserClient();
@@ -86,7 +94,9 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
     setNotice("");
 
     if (demoMode) {
-      if (emailCode !== "123456") return setError("În modul demonstrativ, folosește codul 123456.");
+      if (emailCode !== DEMO_VERIFICATION_CODE) {
+        return setError(`În modul de depanare local, folosește codul ${DEMO_VERIFICATION_CODE}.`);
+      }
       setPhase("phone-code");
       return;
     }
@@ -118,7 +128,9 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
     setNotice("");
 
     if (demoMode) {
-      if (phoneCode !== "123456") return setError("În modul demonstrativ, folosește codul 123456.");
+      if (phoneCode !== DEMO_VERIFICATION_CODE) {
+        return setError(`În modul de depanare local, folosește codul ${DEMO_VERIFICATION_CODE}.`);
+      }
       onContinue();
       return;
     }
@@ -140,7 +152,7 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
 
   const resendEmail = async () => {
     setError("");
-    if (demoMode) return setNotice("Codul demonstrativ pentru email este 123456.");
+    if (demoMode) return setNotice(`Codul pentru email este ${DEMO_VERIFICATION_CODE}.`);
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     setBusy(true);
@@ -152,7 +164,7 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
 
   const resendPhone = async () => {
     setError("");
-    if (demoMode) return setNotice("Codul demonstrativ pentru telefon este 123456.");
+    if (demoMode) return setNotice(`Codul pentru telefon este ${DEMO_VERIFICATION_CODE}.`);
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     setBusy(true);
@@ -178,10 +190,10 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
           <section className="account-card"><p className="landing-kicker">Pasul 1 din 3</p><h2>Creează contul</h2><p>Emailul și numărul de telefon vor identifica un singur cont ProfitExact.</p><form onSubmit={startVerification} noValidate><label><span>Adresă de email</span><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nume@exemplu.ro" /></label><label><span>Număr de telefon</span><input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="07xx xxx xxx" /></label><label><span>Parolă</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimum 8 caractere" /></label><label><span>Confirmă parola</span><input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="Repetă parola" /></label>{error ? <p className="account-error" role="alert">{error}</p> : null}<button className="landing-primary account-submit" type="submit" disabled={busy}>{busy ? "Se creează contul..." : "Creează contul"}</button></form><p className="account-note">Un email sau un telefon deja folosit nu poate crea alt cont.</p></section>
         ) : null}
         {phase === "email-code" ? (
-          <section className="account-card verification-card"><p className="landing-kicker">Pasul 2 din 3</p><h2>Verifică emailul</h2><p>Introdu codul trimis la <strong>{email}</strong>.</p>{demoMode ? <p className="demo-code">Mod demonstrativ: codul este <strong>123456</strong></p> : null}<form onSubmit={verifyEmail}><label><span>Cod primit pe email</span><input className="otp-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={emailCode} onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" /></label>{error ? <p className="account-error" role="alert">{error}</p> : null}{notice ? <p className="account-notice" role="status">{notice}</p> : null}<button className="landing-primary account-submit" type="submit" disabled={busy || emailCode.length < 6}>{busy ? "Se verifică..." : "Verifică emailul"}</button><button className="resend-button" type="button" onClick={resendEmail} disabled={busy}>Retrimite codul</button></form></section>
+          <section className="account-card verification-card"><p className="landing-kicker">Pasul 2 din 3</p><h2>Verifică emailul</h2><p>Introdu codul trimis la <strong>{email}</strong>.</p>{demoMode ? <p className="demo-code">Mod de depanare local: codul este <strong>{DEMO_VERIFICATION_CODE}</strong></p> : null}<form onSubmit={verifyEmail}><label><span>Cod primit pe email</span><input className="otp-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={emailCode} onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" /></label>{error ? <p className="account-error" role="alert">{error}</p> : null}{notice ? <p className="account-notice" role="status">{notice}</p> : null}<button className="landing-primary account-submit" type="submit" disabled={busy || emailCode.length < 6}>{busy ? "Se verifică..." : "Verifică emailul"}</button><button className="resend-button" type="button" onClick={resendEmail} disabled={busy}>Retrimite codul</button></form></section>
         ) : null}
         {phase === "phone-code" ? (
-          <section className="account-card verification-card"><p className="landing-kicker">Pasul 3 din 3</p><h2>Verifică telefonul</h2><p>Introdu codul SMS trimis la <strong>{phone}</strong>.</p>{demoMode ? <p className="demo-code">Mod demonstrativ: codul este <strong>123456</strong></p> : null}<form onSubmit={verifyPhone}><label><span>Cod primit prin SMS</span><input className="otp-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" /></label>{error ? <p className="account-error" role="alert">{error}</p> : null}{notice ? <p className="account-notice" role="status">{notice}</p> : null}<button className="landing-primary account-submit" type="submit" disabled={busy || phoneCode.length < 6}>{busy ? "Se verifică..." : "Verifică telefonul și continuă"}</button><button className="resend-button" type="button" onClick={resendPhone} disabled={busy}>Retrimite codul SMS</button></form></section>
+          <section className="account-card verification-card"><p className="landing-kicker">Pasul 3 din 3</p><h2>Verifică telefonul</h2><p>Introdu codul SMS trimis la <strong>{phone}</strong>.</p>{demoMode ? <p className="demo-code">Mod de depanare local: codul este <strong>{DEMO_VERIFICATION_CODE}</strong></p> : null}<form onSubmit={verifyPhone}><label><span>Cod primit prin SMS</span><input className="otp-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" /></label>{error ? <p className="account-error" role="alert">{error}</p> : null}{notice ? <p className="account-notice" role="status">{notice}</p> : null}<button className="landing-primary account-submit" type="submit" disabled={busy || phoneCode.length < 6}>{busy ? "Se verifică..." : "Verifică telefonul și continuă"}</button><button className="resend-button" type="button" onClick={resendPhone} disabled={busy}>Retrimite codul SMS</button></form></section>
         ) : null}
       </div>
     </main>

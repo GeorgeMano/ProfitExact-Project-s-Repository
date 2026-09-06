@@ -443,7 +443,9 @@ Formula de lucru curentă este:
 
 iar:
 
-`comision aplicație = 25% × (încasări card + încasări cash)`
+`comision aplicație = suma „Comisionul oprit de aplicație” introdusă din screenshot sau manual`
+
+Comisionul aplicației este obligatoriu pentru calculul unei zile sau perioade. ProfitExact nu inventează și nu aplică automat 25%; utilizatorul introduce suma exactă afișată de Bolt/Uber. Până la introducerea ei, rezultatul și salvarea perioadei rămân blocate.
 
 Tips-ul cash rămâne integral la șofer și nu intră în regularizarea cu flota. Regula de lucru curentă este că tips-ul prin aplicație/card rămâne de asemenea integral la șofer: nu intră nici în baza comisionului Bolt, nici în baza comisionului flotei, dar trece prin suma gestionată de flotă și trebuie restituit integral prin regularizare. Compensările nu sunt comisionate în formula de lucru curentă.
 
