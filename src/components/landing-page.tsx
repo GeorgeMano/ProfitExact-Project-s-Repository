@@ -21,7 +21,7 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
         <nav aria-label="Navigare principală">
           <a href="#cum-functioneaza">Cum funcționează</a>
           <a href="#ce-afli">Ce afli</a>
-          <a href="#pentru-cine">Pentru cine</a>
+          <a href="#pentru-cine">Contexte</a>
           <a href="#suport">Suport</a>
         </nav>
         <button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button>
@@ -87,8 +87,8 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
       </section>
 
       <section className="audience-section" id="pentru-cine">
-        <div><p className="landing-kicker">Un cont, contexte separate</p><h2>Pentru modul în care lucrezi tu.</h2><p>Poți avea un context de ridesharing și unul de delivery în același cont. Calculele rămân separate, fiindcă veniturile, comisioanele și costurile pot fi diferite.</p></div>
-        <div className="audience-cards"><article><span>Ridesharing</span><h3>Angajat prin flotă</h3><p>Bolt, Uber sau ambele, cu CIM, comision de flotă și regularizare săptămânală.</p></article><article><span>Ridesharing</span><h3>Propriul SRL/PFA</h3><p>Costurile administrative și fiscale vor fi adăugate numai după validarea regulilor reale.</p></article><article><span>Delivery</span><h3>Angajat sau SRL/PFA</h3><p>Glovo, Wolt și Bolt Food, într-un context calculat separat de ridesharing.</p></article></div>
+        <div><p className="landing-kicker">Un cont, contexte separate</p><h2>Aceleași două forme de lucru, pentru fiecare activitate.</h2><p>Poți avea un context de ridesharing și unul de delivery în același cont. În fiecare activitate alegi forma ta de lucru, iar calculele rămân separate.</p></div>
+        <div className="audience-cards"><article><span>Ridesharing</span><h3>Angajat prin flotă</h3><p>Bolt, Uber sau ambele, cu CIM, comision de flotă și regularizare săptămânală.</p></article><article><span>Ridesharing</span><h3>Propriul SRL/PFA</h3><p>Costurile administrative și fiscale sunt configurate pentru entitatea ta, după validarea regulilor reale.</p></article><article><span>Delivery</span><h3>Angajat prin flotă</h3><p>Glovo, Wolt, Bolt Food sau alte platforme, într-un context calculat separat de ridesharing.</p></article><article><span>Delivery</span><h3>Propriul SRL/PFA</h3><p>Veniturile și cheltuielile delivery sunt păstrate separat, cu regulile entității tale.</p></article></div>
       </section>
 
       <section className="transparency-section"><div><p className="landing-kicker light">Calcule clare</p><h2>Automatizarea te ajută să introduci datele. Nu inventează rezultatul.</h2></div><div><p>Motorul financiar folosește formule deterministe. Importul din screenshot sau PDF va extrage și structura valorile, dar nimic nu intră în calcul până când nu confirmi.</p><p>Introducerea manuală rămâne permanent disponibilă.</p></div></section>
