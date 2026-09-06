@@ -21,7 +21,7 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
         <nav aria-label="Navigare principală">
           <a href="#cum-functioneaza">Cum funcționează</a>
           <a href="#ce-afli">Ce afli</a>
-          <a href="#pentru-cine">Contexte</a>
+          <a href="#pentru-cine">Cui i se adresează</a>
           <a href="#suport">Suport</a>
         </nav>
         <button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button>
@@ -87,7 +87,7 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
       </section>
 
       <section className="audience-section" id="pentru-cine">
-        <div><p className="landing-kicker">Activitate și configurație</p><h2>Începi cu activitatea. Apoi ProfitExact adaptează restul.</h2><p>Alegi Ridesharing sau Delivery. În fiecare activitate alegi forma de lucru și tipul vehiculului; dacă le faci pe ambele, fiecare rămâne un context separat.</p></div>
+        <div><p className="landing-kicker">Pentru cine este ProfitExact</p><h2>Începi cu activitatea. Apoi ProfitExact adaptează restul.</h2><p>Alegi Ridesharing sau Delivery. În fiecare activitate alegi forma de lucru și tipul vehiculului; dacă le faci pe ambele, fiecare rămâne separat.</p></div>
         <div className="audience-cards"><article><span>Activitate principală</span><h3>Ridesharing</h3><p>Bolt, Uber sau ambele.</p><div className="context-details"><div><span>Forma de lucru</span><strong>Angajat</strong><strong>Dețin propriul SRL/PFA</strong></div><div><span>Vehicul</span><strong>Mașină proprie</strong><strong>Mașină închiriată</strong></div></div></article><article><span>Activitate principală</span><h3>Delivery</h3><p>Glovo, Wolt, Bolt Food sau alte platforme de delivery.</p><div className="context-details"><div><span>Forma de lucru</span><strong>Angajat</strong><strong>Dețin propriul SRL/PFA</strong></div><div><span>Vehicul</span><strong>Vehicul propriu</strong><strong>Vehicul închiriat</strong></div></div></article></div>
       </section>
 
