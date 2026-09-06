@@ -5,6 +5,9 @@ import { BrandMark } from "./brand-mark";
 
 export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }) {
   const [supportNotice, setSupportNotice] = useState("");
+  const [selectedActivity, setSelectedActivity] = useState<"ridesharing" | "delivery" | null>(null);
+  const [selectedWorkMode, setSelectedWorkMode] = useState<"employee" | "own" | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<"owned" | "rented" | null>(null);
 
   const prepareSupportMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -87,8 +90,35 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
       </section>
 
       <section className="audience-section" id="pentru-cine">
-        <div><p className="landing-kicker">Pentru cine este ProfitExact</p><h2>Începi cu activitatea. Apoi ProfitExact adaptează restul.</h2><p>Alegi Ridesharing sau Delivery. În fiecare activitate alegi forma de lucru și tipul vehiculului; dacă le faci pe ambele, fiecare rămâne separat.</p></div>
-        <div className="audience-cards"><article><span>Activitate principală</span><h3>Ridesharing</h3><p>Bolt, Uber sau ambele.</p><div className="context-details"><div><span>Forma de lucru</span><strong>Angajat</strong><strong>Dețin propriul SRL/PFA</strong></div><div><span>Vehicul</span><strong>Mașină proprie</strong><strong>Mașină închiriată</strong></div></div></article><article><span>Activitate principală</span><h3>Delivery</h3><p>Glovo, Wolt, Bolt Food sau alte platforme de delivery.</p><div className="context-details"><div><span>Forma de lucru</span><strong>Angajat</strong><strong>Dețin propriul SRL/PFA</strong></div><div><span>Vehicul</span><strong>Vehicul propriu</strong><strong>Vehicul închiriat</strong></div></div></article></div>
+        <div><p className="landing-kicker">Pentru cine este ProfitExact</p><h2>Începi cu activitatea. Apoi ProfitExact adaptează restul.</h2><p>Alege Ridesharing sau Delivery, iar următoarele întrebări apar pe rând, în funcție de situația ta.</p></div>
+        <div>
+          <div className="audience-cards" aria-label="Alege activitatea">
+            <button className={`audience-select ${selectedActivity === "ridesharing" ? "selected" : ""}`} type="button" onClick={() => { setSelectedActivity("ridesharing"); setSelectedWorkMode(null); setSelectedVehicle(null); }} aria-pressed={selectedActivity === "ridesharing"}>
+              <span>Activitate principală</span><h3>Ridesharing</h3><p>Bolt, Uber sau ambele.</p>
+            </button>
+            <button className={`audience-select ${selectedActivity === "delivery" ? "selected" : ""}`} type="button" onClick={() => { setSelectedActivity("delivery"); setSelectedWorkMode(null); setSelectedVehicle(null); }} aria-pressed={selectedActivity === "delivery"}>
+              <span>Activitate principală</span><h3>Delivery</h3><p>Glovo, Wolt, Bolt Food sau alte platforme de delivery.</p>
+            </button>
+          </div>
+          {selectedActivity ? (
+            <div className="audience-step">
+              <p className="audience-step-label">Pasul 2 · Cum lucrezi?</p>
+              <div className="audience-options">
+                <button className={`audience-option ${selectedWorkMode === "employee" ? "selected" : ""}`} type="button" onClick={() => { setSelectedWorkMode("employee"); setSelectedVehicle(null); }} aria-pressed={selectedWorkMode === "employee"}><strong>Angajat</strong><span>Lucrezi printr-o flotă sau prin angajator.</span></button>
+                <button className={`audience-option ${selectedWorkMode === "own" ? "selected" : ""}`} type="button" onClick={() => { setSelectedWorkMode("own"); setSelectedVehicle(null); }} aria-pressed={selectedWorkMode === "own"}><strong>Dețin propriul SRL/PFA</strong><span>Lucrezi prin entitatea ta.</span></button>
+              </div>
+            </div>
+          ) : null}
+          {selectedActivity && selectedWorkMode ? (
+            <div className="audience-step">
+              <p className="audience-step-label">Pasul 3 · Ce folosești?</p>
+              <div className="audience-options">
+                <button className={`audience-option ${selectedVehicle === "owned" ? "selected" : ""}`} type="button" onClick={() => setSelectedVehicle("owned")} aria-pressed={selectedVehicle === "owned"}><strong>{selectedActivity === "ridesharing" ? "Mașină proprie" : "Vehicul propriu"}</strong><span>Costurile se calculează pentru vehiculul tău.</span></button>
+                <button className={`audience-option ${selectedVehicle === "rented" ? "selected" : ""}`} type="button" onClick={() => setSelectedVehicle("rented")} aria-pressed={selectedVehicle === "rented"}><strong>{selectedActivity === "ridesharing" ? "Mașină închiriată" : "Vehicul închiriat"}</strong><span>Chiria și costurile relevante apar separat.</span></button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="transparency-section"><div><p className="landing-kicker light">Calcule clare</p><h2>Automatizarea te ajută să introduci datele. Nu inventează rezultatul.</h2></div><div><p>Motorul financiar folosește formule deterministe. Importul din screenshot sau PDF va extrage și structura valorile, dar nimic nu intră în calcul până când nu confirmi.</p><p>Introducerea manuală rămâne permanent disponibilă.</p></div></section>
