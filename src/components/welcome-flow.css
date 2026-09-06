@@ -58,6 +58,10 @@
 .audience-cards { display: grid; gap: 12px; }
 .audience-cards article > span { color: var(--brand); font-size: 11px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
 .audience-cards h3 { margin-top: 9px; }
+.context-details { display: grid; gap: 14px; margin-top: 18px; }
+.context-details div { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.context-details div > span { flex-basis: 100%; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.context-details strong { border-radius: 999px; background: #edf4f2; color: var(--brand); padding: 7px 10px; font-size: 12px; }
 .transparency-section { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; border-radius: 26px; background: var(--ink); color: #fff; padding: 56px; }
 .transparency-section div:last-child { align-self: end; }
 .transparency-section div:last-child p { color: rgba(255,255,255,.7); font-size: 16px; line-height: 1.7; }
