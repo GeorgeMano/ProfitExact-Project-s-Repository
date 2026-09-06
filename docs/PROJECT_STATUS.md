@@ -13,6 +13,15 @@
 - Salvarea efectivă în cont, uploadurile și plățile nu sunt încă active.
 - Orașul principal este inclus în onboarding ca text liber normalizat și este pregătit pentru istoricul și statisticile publice viitoare.
 
+## Salvare locală și GitHub
+
+- Workspace oficial: `E:\MANO's\ProfitExact Project`.
+- Repository: [ProfitExact-Project-s-Repository](https://github.com/GeorgeMano/ProfitExact-Project-s-Repository).
+- Panou de planificare: [GitHub Project](https://github.com/users/GeorgeMano/projects/2); sincronizarea codului se face prin repository.
+- După fiecare etapă implementată și verificată: commit local, push pe ramura corespunzătoare și verificarea sincronizării cu GitHub. Dacă push-ul nu reușește, etapa se raportează explicit ca salvată numai local.
+- Funcționalitățile importante folosesc ramuri dedicate; se păstrează modificările existente și nu se suprascrie istoricul online.
+- Configurările cu secrete și datele utilizatorilor nu fac parte din backupul codului. Sincronizarea se face în timpul lucrului la proiect, nu printr-un proces permanent în fundal.
+
 ## Stabilit
 
 - profilurile de activitate și formele Angajat/SRL/PFA;
