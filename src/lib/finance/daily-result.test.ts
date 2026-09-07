@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateConsumptionCost,
   calculateFinancialResult,
   calculateDailyResult,
   formatFleetAlert,
@@ -33,6 +34,10 @@ const baseInput: DailyResultInput = {
 };
 
 describe("calculateDailyResult", () => {
+  it("calculează costul combustibilului din kilometri, consum și prețul unitar", () => {
+    expect(calculateConsumptionCost(500, 7, 9.78)).toBe(342.3);
+  });
+
   it("calculează rezultatul și regularizarea fără dublarea comisionului aplicației", () => {
     const result = calculateDailyResult(baseInput);
 

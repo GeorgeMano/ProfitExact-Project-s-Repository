@@ -1,8 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { OnboardingConfig } from "@/domain/onboarding";
 import {
+  energyUnit,
+  usesDirectPhevCosts,
+  type OnboardingConfig,
+} from "@/domain/onboarding";
+import {
+  calculateConsumptionCost,
   calculateFinancialResult,
   formatFleetAlert,
   roundMoney,
@@ -32,7 +37,9 @@ export interface ManualPeriodValues {
   workedDays: number;
   hoursWorked: number;
   kilometers: number;
-  energyCost: number;
+  unitPrice: number;
+  gasolineCost: number;
+  electricCost: number;
   washingCost: number;
   parkingCost: number;
   roadTollCost: number;
@@ -70,7 +77,9 @@ const emptyValues: ManualPeriodValues = {
   workedDays: 0,
   hoursWorked: 0,
   kilometers: 0,
-  energyCost: 0,
+  unitPrice: 0,
+  gasolineCost: 0,
+  electricCost: 0,
   washingCost: 0,
   parkingCost: 0,
   roadTollCost: 0,
@@ -146,6 +155,18 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
   const [values, setValues] = useState<ManualPeriodValues>(existing?.values ?? emptyValues);
   const set = <Key extends keyof ManualPeriodValues>(key: Key, value: ManualPeriodValues[Key]) => setValues((current) => ({ ...current, [key]: value }));
   const oneOffCosts = values.washingCost + values.parkingCost + values.roadTollCost + values.serviceCost + values.otherCost;
+  const directPhevCosts = usesDirectPhevCosts(config);
+  const consumedInPeriod =
+    (Math.max(0, values.kilometers) *
+      Math.max(0, config.consumptionPer100Km)) /
+    100;
+  const energyCost = directPhevCosts
+    ? Math.max(0, values.gasolineCost) + Math.max(0, values.electricCost)
+    : calculateConsumptionCost(
+        values.kilometers,
+        config.consumptionPer100Km,
+        values.unitPrice,
+      );
   const canCalculate = values.applicationCommission !== null;
   const result = canCalculate
     ? calculateFinancialResult({
@@ -157,7 +178,7 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
         cashTips: values.cashTips,
         privateEarnings: values.privateEarnings,
         kilometers: values.kilometers,
-        energyCost: values.energyCost,
+        energyCost,
         fleetCommission: config.fleetCommission,
         cimCost: calendarCosts.cimCost,
         recurringCosts: calendarCosts.recurringCosts,
@@ -213,8 +234,8 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
         <NumberField label="Zile lucrate" value={values.workedDays} onChange={(value) => set("workedDays", value)} suffix="zile" step="1" />
         <NumberField label="Ore lucrate" value={values.hoursWorked} onChange={(value) => set("hoursWorked", value)} suffix="ore" step="0.25" />
         <NumberField label="Kilometri parcurși" value={values.kilometers} onChange={(value) => set("kilometers", value)} suffix="km" />
-        <NumberField label="Cost combustibil / energie consumată" value={values.energyCost} onChange={(value) => set("energyCost", value)} />
-      </div><p className="helper">Introdu costul consumat în perioadă, nu valoarea integrală a unui plin rămas în rezervor.</p></fieldset>
+        {directPhevCosts ? <><NumberField label="Cost benzină consumată în perioadă" value={values.gasolineCost} onChange={(value) => set("gasolineCost", value)} /><NumberField label="Cost energie electrică consumată în perioadă" value={values.electricCost} onChange={(value) => set("electricCost", value)} /></> : <><div className="readonly-field"><span>Consum configurat în onboarding</span><strong>{config.consumptionPer100Km.toLocaleString("ro-RO")} {config.fuelType === "electric" ? "kWh" : "litri"}/100 km</strong></div><NumberField label={`Prețul pe ${energyUnit(config)} folosit pentru perioadă`} value={values.unitPrice} onChange={(value) => set("unitPrice", value)} suffix={`RON/${energyUnit(config)}`} /><div className="calculation-preview"><div><span>{config.fuelType === "electric" ? "Energie calculată" : "Combustibil calculat"}</span><strong>{consumedInPeriod.toLocaleString("ro-RO", { maximumFractionDigits: 2 })} {config.fuelType === "electric" ? "kWh" : "litri"}</strong></div><div><span>Cheltuială calculată</span><strong>{money(energyCost)} RON</strong></div></div></>}
+      </div><p className="helper">Dacă prețul a diferit între zile, introdu zilele separat pentru un calcul exact. Nu se scade valoarea integrală a unui plin rămas în rezervor.</p></fieldset>
 
       <fieldset className="section-block"><legend>Cheltuieli apărute în perioadă</legend><p className="section-help">Lasă necompletate costurile care nu au existat.</p><div className="field-grid">
         <NumberField label="Spălătorie" value={values.washingCost} onChange={(value) => set("washingCost", value)} />

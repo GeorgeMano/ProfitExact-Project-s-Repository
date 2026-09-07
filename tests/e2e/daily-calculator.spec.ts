@@ -95,6 +95,7 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   }
 
   await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeDisabled();
+  await expect(page.locator(".weekly-metrics")).not.toBeVisible();
 
   await page.getByLabel("Încasări card din curse").fill("500");
   await page.getByLabel("Încasări cash din curse").fill("400");
@@ -144,6 +145,8 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await page.getByLabel("Zile lucrate").fill("4");
   await page.getByLabel("Ore lucrate").fill("25");
   await page.getByLabel("Kilometri parcurși").fill("500");
+  await page.getByLabel("Prețul pe litru folosit pentru perioadă").fill("9.78");
+  await expect(page.locator(".calculation-preview").getByText("415,65 RON", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
   await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
 

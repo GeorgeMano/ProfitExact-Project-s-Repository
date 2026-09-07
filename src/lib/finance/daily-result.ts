@@ -87,6 +87,19 @@ export function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+export function calculateConsumptionCost(
+  kilometers: number,
+  consumptionPer100Km: number,
+  unitPrice: number,
+) {
+  return roundMoney(
+    (nonNegative(kilometers) *
+      nonNegative(consumptionPer100Km) *
+      nonNegative(unitPrice)) /
+      100,
+  );
+}
+
 export function calculateFinancialResult(
   input: FinancialResultInput,
 ): FinancialResult {
@@ -175,10 +188,11 @@ export function calculateDailyResult(input: DailyResultInput): DailyResult {
     input.energy.type === "phev"
       ? nonNegative(input.energy.gasolineCost) +
         nonNegative(input.energy.electricCost)
-      : (kilometers *
-          nonNegative(input.energy.consumptionPer100Km) *
-          nonNegative(input.energy.unitPrice)) /
-        100;
+      : calculateConsumptionCost(
+          kilometers,
+          input.energy.consumptionPer100Km,
+          input.energy.unitPrice,
+        );
 
   const result = calculateFinancialResult({
     cardEarnings: input.cardEarnings,

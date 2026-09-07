@@ -563,6 +563,8 @@ Prețul confirmat este asociat numai zilei pentru care a fost introdus. ProfitEx
 
 `cost combustibil lunar = suma costurilor de combustibil calculate pentru zilele lunii`
 
+Pentru fallback-ul în care utilizatorul introduce direct o săptămână sau o lună fără zile salvate, configurațiile non-PHEV folosesc `kilometri perioadă × consum configurat ÷ 100 × preț unitar introdus`. Câmpul reprezintă prețul pe litru/kWh, nu costul total al perioadei. Dacă prețul a variat între zile, interfața recomandă introducerea zilelor separat pentru un rezultat exact.
+
 Pentru `Benzină + GPL`, calculul zilnic folosește:
 
 - totalul kilometrilor zilei;

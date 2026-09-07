@@ -301,10 +301,10 @@ export function OnboardingFlow({
           ) : null}
 
           {step === 1 ? (
-            <Step title="Cum lucrezi pentru ridesharing?" description="Îți arătăm numai costurile care se potrivesc situației tale.">
+            <Step title="Cum lucrezi pentru ridesharing?" description="Îți arătăm doar costurile care se potrivesc situației tale.">
               <div className="choice-grid">
-                <Choice value="employee" selected label="Angajat" detail="Lucrez prin flotă sau SRL-ul altcuiva" onSelect={() => undefined} />
-                <Choice value="own" selected={false} label="Propriul SRL/PFA" detail="Lucrez prin entitatea mea" onSelect={() => undefined} disabled />
+                <Choice value="employee" selected label="Angajat" detail="Lucrez pentru o firmă de transport alternativ" onSelect={() => undefined} />
+                <Choice value="own" selected={false} label="Propriul SRL/PFA" detail="Dețin licență de transport alternativ" onSelect={() => undefined} disabled />
               </div>
             </Step>
           ) : null}
@@ -335,7 +335,6 @@ export function OnboardingFlow({
                   }
                 />
               </label>
-              <p className="field-note full">Dacă scrii cu diacritice, ProfitExact le elimină automat pentru ca același oraș să nu apară de mai multe ori în statistici.</p>
             </Step>
           ) : null}
 

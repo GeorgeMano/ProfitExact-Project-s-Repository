@@ -87,6 +87,7 @@ Acest document păstrează numai deciziile care influențează produsul. Detalii
 - Prețul unitar se extrage din bon sau se calculează din totalul plătit și cantitatea cumpărată; datele trebuie confirmate.
 - Prețul este confirmat separat pentru fiecare zi lucrată; nu se calculează și nu se folosește un preț mediu săptămânal.
 - Costul săptămânal și lunar al combustibilului este suma costurilor zilnice calculate.
+- Dacă o săptămână sau lună este introdusă direct, costul non-PHEV se calculează din kilometrii perioadei, consumul configurat și prețul unitar introdus; prețul nu este tratat drept cost total.
 - Mașina închiriată folosește chiria, combustibilul/energia și spălările relevante șoferului.
 - RCA și CASCO se împart la 365 sau 366 de zile și se aplică zilnic, indiferent de zilele lucrate.
 - Rata/leasingul lunar se împarte la numărul zilelor calendaristice din lună și se aplică zilnic.
