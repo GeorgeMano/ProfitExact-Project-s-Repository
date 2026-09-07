@@ -4,6 +4,10 @@ export interface AllocatedRecurringCost extends RecurringCostConfig {
   dailyAmount: number;
 }
 
+export interface AllocatedRecurringPeriodCost extends RecurringCostConfig {
+  periodAmount: number;
+}
+
 function isLeapYear(year: number) {
   return year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0);
 }
@@ -44,4 +48,50 @@ export function allocateRecurringCosts(
       dailyAmount: allocateRecurringCost(cost, date),
     }))
     .filter((cost) => cost.dailyAmount > 0);
+}
+
+function dateFromIso(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+export function inclusiveDays(startDate: string, endDate: string) {
+  const start = dateFromIso(startDate).getTime();
+  const end = dateFromIso(endDate).getTime();
+  return end < start ? 0 : Math.floor((end - start) / 86_400_000) + 1;
+}
+
+export function allocateRecurringCostForRange(
+  cost: RecurringCostConfig,
+  startDate: string,
+  endDate: string,
+) {
+  const start = dateFromIso(startDate);
+  const days = inclusiveDays(startDate, endDate);
+  let total = 0;
+
+  for (let offset = 0; offset < days; offset += 1) {
+    const current = new Date(start);
+    current.setUTCDate(start.getUTCDate() + offset);
+    total += allocateRecurringCost(cost, current.toISOString().slice(0, 10));
+  }
+
+  return total;
+}
+
+export function allocateRecurringCostsForRange(
+  costs: RecurringCostConfig[],
+  startDate: string,
+  endDate: string,
+): AllocatedRecurringPeriodCost[] {
+  return costs
+    .map((cost) => ({
+      ...cost,
+      periodAmount: allocateRecurringCostForRange(
+        cost,
+        startDate,
+        endDate,
+      ),
+    }))
+    .filter((cost) => cost.periodAmount > 0);
 }

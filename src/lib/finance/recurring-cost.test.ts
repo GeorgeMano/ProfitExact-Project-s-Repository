@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { allocateRecurringCost } from "./recurring-cost";
+import {
+  allocateRecurringCost,
+  allocateRecurringCostForRange,
+  inclusiveDays,
+} from "./recurring-cost";
 import type { RecurringCostConfig } from "@/domain/onboarding";
 
 const cost = (overrides: Partial<RecurringCostConfig>): RecurringCostConfig => ({
@@ -57,5 +61,37 @@ describe("allocateRecurringCost", () => {
         "2026-08-30",
       ),
     ).toBe(0);
+  });
+
+  it("aplică un cost săptămânal tuturor celor șapte zile", () => {
+    expect(
+      allocateRecurringCostForRange(
+        cost({ amount: 700, period: "weekly" }),
+        "2026-08-31",
+        "2026-09-06",
+      ),
+    ).toBe(700);
+  });
+
+  it("aplică un cost lunar întreg lunii și respectă data efectivă", () => {
+    expect(
+      allocateRecurringCostForRange(
+        cost({ amount: 300, period: "monthly" }),
+        "2026-09-01",
+        "2026-09-30",
+      ),
+    ).toBeCloseTo(300);
+    expect(
+      allocateRecurringCostForRange(
+        cost({ amount: 300, period: "monthly", effectiveFrom: "2026-09-16" }),
+        "2026-09-01",
+        "2026-09-30",
+      ),
+    ).toBeCloseTo(150);
+  });
+
+  it("numără inclusiv zilele de început și sfârșit", () => {
+    expect(inclusiveDays("2026-08-31", "2026-09-06")).toBe(7);
+    expect(inclusiveDays("2026-09-01", "2026-09-30")).toBe(30);
   });
 });

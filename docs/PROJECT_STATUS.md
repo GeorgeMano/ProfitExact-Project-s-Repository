@@ -72,7 +72,7 @@
 
 ## Următorul pas
 
-Prima secțiune funcțională locală pentru profilul `Ridesharing → Angajat` este în verificare. Ea pornește cu onboarding-ul, aplică automat costurile recurente și continuă cu introducerea manuală a unei zile, calculul rezultatului, câștigul pe kilometru, regularizarea cu flota și tratamentul PHEV. Formulele au teste unitare, iar fluxul principal are test de browser.
+Prima secțiune funcțională locală pentru profilul `Ridesharing → Angajat` este în verificare. Ea include onboarding-ul, introducerea zilnică, centralizări săptămânale și lunare, fallback manual pentru perioade fără date, costuri recurente calendaristice, regularizarea cu flota și tratamentul PHEV. Formulele și exemplele Bolt reale au teste unitare, iar fluxul zi–săptămână–lună are test de browser.
 
 Schema este aplicată și izolarea între utilizatori a fost verificată efectiv, nu doar prin citirea politicilor: doi utilizatori de test, fiecare vede numai propriile rânduri, scrierea pe contul altuia este respinsă cu `42501`, iar auto-promovarea la `admin` este blocată. Datele de test au fost șterse.
 
@@ -81,7 +81,7 @@ Următorii pași, în ordine:
 1. client Supabase pe server (`createServerClient`) plus `middleware.ts` pentru sesiune — fără asta, orice scriere din aplicație rămâne fragilă;
 2. rute App Router în locul stării unice din `ProfitExactApp`;
 3. reparat cazul contului rămas cu emailul verificat și telefonul neverificat, care astăzi produce un utilizator fără profil;
-4. rotunjirea monetară la 2 zecimale în `lib/finance`, ca ecranul și baza de date să nu diverge;
-5. salvarea onboarding-ului și a zilei, cu scrierea instantaneului în `work_entries.computed_*`.
+4. reconcilierea migrărilor locale înainte de orice schimbare a bazei online;
+5. salvarea onboarding-ului și a perioadelor, cu scrierea detaliilor și a instantaneului de calcul în baza de date.
 
 Conexiunea administrativă se face prin connectorul Supabase din Claude, distinct de conexiunea aplicației.

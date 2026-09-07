@@ -39,16 +39,33 @@ export interface DailyResultInput {
   oneOffDailyCosts: number;
 }
 
-export interface DailyResult {
+export interface FinancialResultInput {
+  cardEarnings: number;
+  cashEarnings: number;
+  applicationCommission: number | null;
+  compensations: number;
+  appTips: number;
+  cashTips: number;
+  privateEarnings: number;
+  kilometers: number;
+  energyCost: number;
+  fleetCommission: FleetCommission;
+  cimCost: number;
+  recurringCosts: number;
+  recurringFleetCosts: number;
+  oneOffCosts: number;
+}
+
+export interface FinancialResult {
   grossPlatformEarnings: number;
   applicationCommission: number;
   platformNetEarnings: number;
   totalEarnings: number;
   energyCost: number;
   fleetCommission: number;
-  dailyCimCost: number;
-  recurringDailyCosts: number;
-  oneOffDailyCosts: number;
+  cimCost: number;
+  recurringCosts: number;
+  oneOffCosts: number;
   totalExpenses: number;
   result: number;
   resultPerKm: number | null;
@@ -56,11 +73,23 @@ export interface DailyResult {
   fleetBalance: number;
 }
 
+export interface DailyResult extends FinancialResult {
+  dailyCimCost: number;
+  recurringDailyCosts: number;
+  oneOffDailyCosts: number;
+}
+
 function nonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-export function calculateDailyResult(input: DailyResultInput): DailyResult {
+export function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function calculateFinancialResult(
+  input: FinancialResultInput,
+): FinancialResult {
   const cardEarnings = nonNegative(input.cardEarnings);
   const cashEarnings = nonNegative(input.cashEarnings);
   const compensations = nonNegative(input.compensations);
@@ -69,23 +98,79 @@ export function calculateDailyResult(input: DailyResultInput): DailyResult {
   const privateEarnings = nonNegative(input.privateEarnings);
   const kilometers = nonNegative(input.kilometers);
 
-  const grossPlatformEarnings = cardEarnings + cashEarnings;
-  const applicationCommission = nonNegative(input.applicationCommission ?? 0);
-  const platformNetEarnings =
-    grossPlatformEarnings - applicationCommission;
+  const grossPlatformEarnings = roundMoney(cardEarnings + cashEarnings);
+  const applicationCommission = roundMoney(
+    nonNegative(input.applicationCommission ?? 0),
+  );
+  const platformNetEarnings = roundMoney(
+    grossPlatformEarnings - applicationCommission,
+  );
 
-  const commissionBase =
+  const commissionBase = nonNegative(
     input.fleetCommission.type === "percentage" &&
     input.fleetCommission.base === "gross"
       ? grossPlatformEarnings
-      : platformNetEarnings;
+      : platformNetEarnings,
+  );
 
   const fleetCommission =
     input.fleetCommission.type === "fixed"
-      ? nonNegative(input.fleetCommission.value)
-      : commissionBase *
-        (nonNegative(input.fleetCommission.value) / 100);
+      ? roundMoney(nonNegative(input.fleetCommission.value))
+      : roundMoney(
+          commissionBase *
+            (nonNegative(input.fleetCommission.value) / 100),
+        );
 
+  const energyCost = roundMoney(nonNegative(input.energyCost));
+  const cimCost = roundMoney(nonNegative(input.cimCost));
+  const recurringCosts = roundMoney(nonNegative(input.recurringCosts));
+  const recurringFleetCosts = nonNegative(input.recurringFleetCosts);
+  const oneOffCosts = roundMoney(nonNegative(input.oneOffCosts));
+
+  const totalEarnings = roundMoney(
+    platformNetEarnings +
+      compensations +
+      appTips +
+      cashTips +
+      privateEarnings,
+  );
+
+  const totalExpenses = roundMoney(
+    energyCost +
+      fleetCommission +
+      cimCost +
+      recurringCosts +
+      oneOffCosts,
+  );
+
+  const result = roundMoney(totalEarnings - totalExpenses);
+  const amountManagedByFleet = roundMoney(
+    cardEarnings + compensations + appTips - applicationCommission,
+  );
+  const fleetBalance = roundMoney(
+    fleetCommission + cimCost + recurringFleetCosts - amountManagedByFleet,
+  );
+
+  return {
+    grossPlatformEarnings,
+    applicationCommission,
+    platformNetEarnings,
+    totalEarnings,
+    energyCost,
+    fleetCommission,
+    cimCost,
+    recurringCosts,
+    oneOffCosts,
+    totalExpenses,
+    result,
+    resultPerKm: kilometers > 0 && result !== 0 ? result / kilometers : null,
+    amountManagedByFleet,
+    fleetBalance,
+  };
+}
+
+export function calculateDailyResult(input: DailyResultInput): DailyResult {
+  const kilometers = nonNegative(input.kilometers);
   const energyCost =
     input.energy.type === "phev"
       ? nonNegative(input.energy.gasolineCost) +
@@ -95,46 +180,28 @@ export function calculateDailyResult(input: DailyResultInput): DailyResult {
           nonNegative(input.energy.unitPrice)) /
         100;
 
-  const dailyCimCost = nonNegative(input.weeklyCimCost) / 7;
-  const recurringDailyCosts = nonNegative(input.recurringDailyCosts);
-  const recurringFleetCosts = nonNegative(input.recurringFleetCosts);
-  const oneOffDailyCosts = nonNegative(input.oneOffDailyCosts);
-
-  const totalEarnings =
-    platformNetEarnings +
-    compensations +
-    appTips +
-    cashTips +
-    privateEarnings;
-
-  const totalExpenses =
-    energyCost +
-    fleetCommission +
-    dailyCimCost +
-    recurringDailyCosts +
-    oneOffDailyCosts;
-
-  const result = totalEarnings - totalExpenses;
-  const amountManagedByFleet =
-    cardEarnings + compensations + appTips - applicationCommission;
-  const fleetBalance =
-    fleetCommission + dailyCimCost + recurringFleetCosts - amountManagedByFleet;
+  const result = calculateFinancialResult({
+    cardEarnings: input.cardEarnings,
+    cashEarnings: input.cashEarnings,
+    applicationCommission: input.applicationCommission,
+    compensations: input.compensations,
+    appTips: input.appTips,
+    cashTips: input.cashTips,
+    privateEarnings: input.privateEarnings,
+    kilometers,
+    energyCost,
+    fleetCommission: input.fleetCommission,
+    cimCost: nonNegative(input.weeklyCimCost) / 7,
+    recurringCosts: input.recurringDailyCosts,
+    recurringFleetCosts: input.recurringFleetCosts,
+    oneOffCosts: input.oneOffDailyCosts,
+  });
 
   return {
-    grossPlatformEarnings,
-    applicationCommission,
-    platformNetEarnings,
-    totalEarnings,
-    energyCost,
-    fleetCommission,
-    dailyCimCost,
-    recurringDailyCosts,
-    oneOffDailyCosts,
-    totalExpenses,
-    result,
-    resultPerKm: kilometers > 0 && result !== 0 ? result / kilometers : null,
-    amountManagedByFleet,
-    fleetBalance,
+    ...result,
+    dailyCimCost: result.cimCost,
+    recurringDailyCosts: result.recurringCosts,
+    oneOffDailyCosts: result.oneOffCosts,
   };
 }
 

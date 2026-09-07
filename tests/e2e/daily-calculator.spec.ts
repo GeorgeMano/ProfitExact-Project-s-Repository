@@ -125,4 +125,30 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await page.getByRole("button", { name: "Salvează ziua în săptămână" }).click();
   await expect(page.getByText("Regularizarea săptămânii")).toBeVisible();
   await expect(page.getByText("1", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Săptămânal" }).click();
+  await expect(page.getByRole("heading", { name: "Centralizarea săptămânii" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Centralizare automată" })).toBeVisible();
+  await expect(page.getByText("Datele nu sunt dublate.")).toBeVisible();
+
+  await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
+  await expect(page.getByRole("heading", { name: "Nu există date în această perioadă" })).toBeVisible();
+  await expect(page.getByLabel("Comisionul oprit de aplicație")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Salvează săptămâna" })).toBeDisabled();
+
+  await page.getByLabel("Încasări card din curse").fill("803.90");
+  await page.getByLabel("Încasări cash din curse").fill("566.30");
+  await page.getByLabel("Comisionul oprit de aplicație").fill("395.72");
+  await page.getByLabel("Compensări / campanii / taxe de anulare").fill("231.30");
+  await page.getByLabel("Tips prin aplicație/card").fill("20");
+  await page.getByLabel("Zile lucrate").fill("4");
+  await page.getByLabel("Ore lucrate").fill("25");
+  await page.getByLabel("Kilometri parcurși").fill("500");
+  await page.getByRole("button", { name: "Salvează săptămâna" }).click();
+  await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+
+  await page.getByRole("button", { name: "Lunar" }).click();
+  await expect(page.getByRole("heading", { name: "Centralizarea lunii" })).toBeVisible();
+  await expect(page.getByText(/1 săptămâni introduse manual/)).toBeVisible();
+  await expect(page.getByText("Săptămână · 12.10.2026–18.10.2026")).toBeVisible();
 });

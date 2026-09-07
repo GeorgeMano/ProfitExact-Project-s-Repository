@@ -8,7 +8,7 @@ ProfitExact este o aplicație web mobile-first pentru șoferii de ridesharing ș
 
 **Faza curentă: 1B — cont și salvare reală, în lucru.**
 
-Aplicația locală include pagina de prezentare, crearea demonstrativă a contului, onboarding-ul contextual, introducerea manuală a unei zile, calculele și regularizarea săptămânală. Next.js, TypeScript și Supabase formează fundația tehnică. Specificația continuă în paralel pentru zonele încă nedefinite.
+Aplicația locală include pagina de prezentare, crearea demonstrativă a contului, onboarding-ul contextual și calcule zilnice, săptămânale și lunare. Zilele salvate sunt centralizate automat, iar o săptămână sau lună fără date poate fi introdusă manual. Next.js, TypeScript și Supabase formează fundația tehnică.
 
 Conexiunea Supabase este configurată local; verificarea completă email/SMS și salvarea în cont nu sunt încă gata. Configurarea se păstrează în `.env.local` (exclus din Git), după modelul `.env.example`. Pornire locală: `npm run dev`. Testele de browser folosesc separat portul 3100 și nu accesează proiectul Supabase real.
 

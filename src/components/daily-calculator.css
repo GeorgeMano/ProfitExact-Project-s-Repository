@@ -216,6 +216,75 @@
   box-shadow: 0 4px 12px rgba(18, 53, 48, 0.09);
 }
 
+.period-tabs {
+  width: min(520px, 100%);
+  margin: 0 0 18px;
+}
+
+.period-source-card h2,
+.period-source-card h3 {
+  margin: 0 0 9px;
+  color: var(--ink);
+  letter-spacing: -0.025em;
+}
+
+.period-source-card h2 {
+  font-size: 21px;
+}
+
+.period-source-card h3 {
+  font-size: 16px;
+}
+
+.manual-period-form .section-block:first-child {
+  border-top: 1px solid #e9efec;
+}
+
+.source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.source-chips span {
+  border-radius: 999px;
+  background: rgba(7, 92, 85, 0.09);
+  color: var(--brand);
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.compact-cost-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.compact-cost-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf1ef;
+  padding: 10px 0;
+  font-size: 13px;
+}
+
+.compact-cost-list dt {
+  color: var(--muted);
+}
+
+.compact-cost-list dd {
+  margin: 0;
+  font-weight: 750;
+}
+
+.empty-period-card p:last-child {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .helper {
   margin: 10px 2px 0;
   color: var(--muted);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateFinancialResult,
   calculateDailyResult,
   formatFleetAlert,
   formatResultAlert,
@@ -66,7 +67,53 @@ describe("calculateDailyResult", () => {
     });
 
     expect(result.applicationCommission).toBe(128.99);
-    expect(result.fleetCommission).toBeCloseTo(73.8111);
+    expect(result.fleetCommission).toBe(73.81);
+  });
+
+  it("reproduce exact câștigurile Bolt din exemplul real zilnic", () => {
+    const result = calculateFinancialResult({
+      cardEarnings: 278.3,
+      cashEarnings: 178.1,
+      applicationCommission: 128.99,
+      compensations: 62.1,
+      appTips: 10,
+      cashTips: 0,
+      privateEarnings: 0,
+      kilometers: 0,
+      energyCost: 0,
+      fleetCommission: { type: "percentage", value: 0, base: "net" },
+      cimCost: 0,
+      recurringCosts: 0,
+      recurringFleetCosts: 0,
+      oneOffCosts: 0,
+    });
+
+    expect(result.grossPlatformEarnings).toBe(456.4);
+    expect(result.totalEarnings).toBe(399.51);
+    expect(result.result).toBe(399.51);
+  });
+
+  it("reproduce exact câștigurile Bolt din exemplul real săptămânal", () => {
+    const result = calculateFinancialResult({
+      cardEarnings: 803.9,
+      cashEarnings: 566.3,
+      applicationCommission: 395.72,
+      compensations: 231.3,
+      appTips: 20,
+      cashTips: 0,
+      privateEarnings: 0,
+      kilometers: 0,
+      energyCost: 0,
+      fleetCommission: { type: "percentage", value: 0, base: "net" },
+      cimCost: 0,
+      recurringCosts: 0,
+      recurringFleetCosts: 0,
+      oneOffCosts: 0,
+    });
+
+    expect(result.grossPlatformEarnings).toBe(1370.2);
+    expect(result.totalEarnings).toBe(1225.78);
+    expect(result.result).toBe(1225.78);
   });
 
   it("afișează mesajul simplu aprobat când rezultatul este zero", () => {

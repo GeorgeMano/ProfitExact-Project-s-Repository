@@ -106,7 +106,11 @@ Acest document păstrează numai deciziile care influențează produsul. Detalii
 - Motorul financiar nu depinde de mecanismul de extragere.
 - Screenshoturile cu încasări și activitate pot fi zilnice sau săptămânale.
 - Pentru screenshot, ProfitExact detectează perioada și îi cere utilizatorului să o confirme sau să o corecteze.
-- Pentru introducerea manuală, utilizatorul alege `Adaugă o zi` sau `Adaugă o săptămână`.
+- Pentru introducerea manuală, utilizatorul poate alege o zi, o săptămână sau o lună.
+- Săptămâna centralizează automat zilele salvate. Luna centralizează automat zilele și săptămânile manuale eligibile.
+- Dacă nu există date mai detaliate în perioada selectată, utilizatorul poate introduce direct totalurile săptămânii sau lunii.
+- O sursă agregată și sursele ei mai detaliate nu se însumează în aceeași perioadă; sursa mai detaliată are prioritate, pentru a evita dublarea.
+- CIM-ul și costurile recurente se aplică fiecărei zile calendaristice din săptămâna sau luna calculată. Spălătoria, parcarea, taxele de drum, service-ul și alte costuri punctuale intră numai dacă au fost înregistrate.
 - Zilele lucrate, orele și kilometrii se extrag din screenshot când sunt vizibile și se confirmă; valorile absente sau nesigure se introduc manual.
 - Datele zilnice reale sunt asociate zilei; un total săptămânal nu este transformat în zile fictive.
 - După încheierea săptămânii se calculează `valoare săptămânală ÷ zile lucrate în săptămână`.

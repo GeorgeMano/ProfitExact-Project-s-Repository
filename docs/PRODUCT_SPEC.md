@@ -607,6 +607,10 @@ Zilele lucrate, orele și kilometrii sunt preluați din screenshot când apar î
 
 Luna este calendaristică, de la ziua 1 până la ultima zi a lunii în fusul orar României. La finalul lunii se afișează un sumar al veniturilor, cheltuielilor și indicatorilor disponibili, inclusiv media lunară calculată după ce numărul zilelor lucrate din lună este cunoscut.
 
+Centralizarea urmează ierarhia `zi → săptămână → lună`. Săptămâna folosește automat zilele salvate, iar luna folosește automat datele zilnice și săptămânile agregate eligibile. Dacă perioada nu are date mai detaliate, utilizatorul poate introduce manual totalurile săptămânii sau lunii. ProfitExact nu însumează o valoare agregată cu datele ei componente; datele mai detaliate au prioritate pentru a evita dublarea veniturilor și cheltuielilor.
+
+Costurile recurente din onboarding se repartizează pe toate zilele calendaristice ale perioadei. Costurile punctuale, precum spălătoria, parcarea, taxele de drum, service-ul și alte costuri de traseu, intră numai în perioada în care au fost înregistrate. O săptămână introdusă agregat care traversează două luni nu este împărțită artificial între luni până la închiderea deciziei deschise privind această alocare.
+
 Pentru fiecare perioadă, unde profilul și sursa permit, sistemul poate colecta:
 
 - venituri;
@@ -670,7 +674,8 @@ Fluxul urmărit este:
 Pentru introducerea manuală, utilizatorul alege direct una dintre cele două acțiuni:
 
 - `Adaugă o zi`;
-- `Adaugă o săptămână`.
+- `Adaugă o săptămână`;
+- `Adaugă o lună`, disponibil când luna nu conține date mai detaliate.
 
 Formularul și calculele folosesc perioada aleasă. Nicio detectare automată nu înlocuiește confirmarea utilizatorului.
 

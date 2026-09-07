@@ -12,14 +12,25 @@ import {
   calculateDailyResult,
   formatFleetAlert,
   formatResultAlert,
+  roundMoney,
 } from "@/lib/finance/daily-result";
-import { allocateRecurringCosts } from "@/lib/finance/recurring-cost";
 import {
-  summarizeWeek,
+  allocateRecurringCosts,
+  allocateRecurringCostsForRange,
+  inclusiveDays,
+} from "@/lib/finance/recurring-cost";
+import {
+  getPeriodBounds,
+  summarizePeriod,
   upsertSavedWorkDay,
   type SavedWorkDay,
+  type SummaryPeriod,
 } from "@/lib/finance/weekly-summary";
 import { BrandMark } from "./brand-mark";
+import {
+  PeriodSummaryPanel,
+  type SavedManualPeriod,
+} from "./period-summary-panel";
 import "./daily-calculator.css";
 
 function todayInRomania() {
@@ -64,6 +75,7 @@ function DailyExpenseQuestion({ question, label, enabled, value, onToggle, onCha
 
 export function DailyCalculator({ config, onEditOnboarding }: { config: OnboardingConfig; onEditOnboarding: () => void }) {
   const [date, setDate] = useState(todayInRomania);
+  const [activePeriod, setActivePeriod] = useState<"day" | SummaryPeriod>("day");
   const [cardEarnings, setCardEarnings] = useState(0);
   const [cashEarnings, setCashEarnings] = useState(0);
   const [applicationCommission, setApplicationCommission] = useState<number | null>(null);
@@ -87,6 +99,7 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
   const [hadOtherRouteCostToday, setHadOtherRouteCostToday] = useState(false);
   const [otherPointCost, setOtherPointCost] = useState(0);
   const [savedDays, setSavedDays] = useState<SavedWorkDay[]>([]);
+  const [manualPeriods, setManualPeriods] = useState<SavedManualPeriod[]>([]);
   const [lastSavedDate, setLastSavedDate] = useState<string | null>(null);
 
   const recurringCosts = useMemo(
@@ -136,20 +149,73 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
   const canCalculate = applicationCommission !== null && Number.isFinite(applicationCommission);
   const resultPerHour = canCalculate && hoursWorked > 0 ? result.result / hoursWorked : null;
   const applicationCommissionLabel = "Comisionul oprit de aplicație";
-  const weeklySummary = summarizeWeek(savedDays, date);
+  const weeklyBounds = getPeriodBounds(date, "week");
+  const weeklyRecurringCosts = allocateRecurringCostsForRange(
+    config.recurringCosts,
+    weeklyBounds.startDate,
+    weeklyBounds.endDate,
+  );
+  const weeklySummary = summarizePeriod(savedDays, date, "week", {
+    cimCost: roundMoney(
+      (config.weeklyCimCost / 7) *
+        inclusiveDays(weeklyBounds.startDate, weeklyBounds.endDate),
+    ),
+    recurringCosts: roundMoney(
+      weeklyRecurringCosts.reduce((sum, cost) => sum + cost.periodAmount, 0),
+    ),
+    recurringFleetCosts: roundMoney(
+      weeklyRecurringCosts
+        .filter((cost) => cost.paidToFleet)
+        .reduce((sum, cost) => sum + cost.periodAmount, 0),
+    ),
+  });
   const saveDayInWeek = () => {
     if (!canCalculate) return;
     setSavedDays((current) =>
       upsertSavedWorkDay(current, {
         date,
+        cardEarnings,
+        cashEarnings,
+        applicationCommission: result.applicationCommission,
+        compensations,
+        appTips,
+        cashTips,
+        privateEarnings,
         result: result.result,
+        resultBeforeCalendarCosts: roundMoney(
+          result.result + result.cimCost + result.recurringCosts,
+        ),
         fleetBalance: result.fleetBalance,
+        fleetBalanceBeforeCalendarCosts: roundMoney(
+          result.fleetBalance - result.cimCost - recurringFleetTotal,
+        ),
+        totalEarnings: result.totalEarnings,
+        energyCost: result.energyCost,
+        fleetCommission: result.fleetCommission,
+        oneOffCosts: result.oneOffCosts,
         hoursWorked,
         kilometers,
       }),
     );
     setLastSavedDate(date);
   };
+  const saveManualPeriod = (entry: SavedManualPeriod) => {
+    setManualPeriods((current) => [
+      ...current.filter((item) => item.id !== entry.id),
+      entry,
+    ]);
+  };
+
+  const title = activePeriod === "day"
+    ? "Adaugă o zi de lucru"
+    : activePeriod === "week"
+      ? "Centralizarea săptămânii"
+      : "Centralizarea lunii";
+  const dateLabel = activePeriod === "day"
+    ? "Data activității"
+    : activePeriod === "week"
+      ? "Alege o zi din săptămână"
+      : "Alege luna";
 
   return (
     <main className="app-shell">
@@ -159,8 +225,8 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
       </header>
 
       <section className="intro" id="top">
-        <div><p className="eyebrow">Introducere manuală</p><h1>Adaugă o zi de lucru</h1><p className="lead">Configurația din onboarding se aplică automat calculelor.</p></div>
-        <div className="date-block"><label htmlFor="work-date">Data activității</label><input id="work-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div>
+        <div><p className="eyebrow">Introducere și centralizare</p><h1>{title}</h1><p className="lead">Configurația din onboarding se aplică automat calculelor.</p></div>
+        <div className="date-block"><label htmlFor="work-date">{dateLabel}</label><input id="work-date" type={activePeriod === "month" ? "month" : "date"} value={activePeriod === "month" ? date.slice(0, 7) : date} onChange={(event) => setDate(activePeriod === "month" ? `${event.target.value}-01` : event.target.value)} /></div>
       </section>
 
       <section className="config-strip">
@@ -171,7 +237,13 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
         <button type="button" onClick={onEditOnboarding}>Modifică onboarding-ul</button>
       </section>
 
-      <section className="workspace" aria-label="Calculator zilnic">
+      <nav className="period-tabs segmented" aria-label="Perioada calculului">
+        <button type="button" className={activePeriod === "day" ? "selected" : ""} onClick={() => setActivePeriod("day")}>Zilnic</button>
+        <button type="button" className={activePeriod === "week" ? "selected" : ""} onClick={() => setActivePeriod("week")}>Săptămânal</button>
+        <button type="button" className={activePeriod === "month" ? "selected" : ""} onClick={() => setActivePeriod("month")}>Lunar</button>
+      </nav>
+
+      {activePeriod === "day" ? <section className="workspace" aria-label="Calculator zilnic">
         <form className="form-card" onSubmit={(event) => event.preventDefault()}>
           <fieldset className="section-block"><legend>Încasări {platformLabels[config.platform]}</legend><div className="field-grid">
             <NumberField label="Încasări card din curse" value={cardEarnings} onChange={setCardEarnings} />
@@ -218,7 +290,7 @@ export function DailyCalculator({ config, onEditOnboarding }: { config: Onboardi
           <section className={`weekly-card ${weeklySummary.totalFleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea săptămânii</p><p className="weekly-range">{shortDate(weeklySummary.startDate)} – {shortDate(weeklySummary.endDate)}</p><h2>{weeklySummary.days.length ? formatFleetAlert(weeklySummary.totalFleetBalance) : "Nicio zi salvată încă"}</h2><div className="weekly-metrics"><div><span>Zile</span><strong>{weeklySummary.days.length}</strong></div><div><span>Ore</span><strong>{weeklySummary.totalHours.toLocaleString("ro-RO")}</strong></div><div><span>Kilometri</span><strong>{weeklySummary.totalKilometers.toLocaleString("ro-RO")}</strong></div><div><span>Îți rămân</span><strong>{money(weeklySummary.totalResult)} RON</strong></div></div>{weeklySummary.days.length ? <div className="saved-days">{weeklySummary.days.map((day) => <span key={day.date}>{shortDate(day.date)} · {day.hoursWorked.toLocaleString("ro-RO")} ore</span>)}</div> : <p className="weekly-empty">Salvează fiecare zi lucrată; soldul pentru plată se actualizează pe toată săptămâna luni–duminică.</p>}</section>
           <p className="preview-note">Această versiune verifică fluxul și formulele. Salvarea în cont urmează după conectarea proiectului Supabase.</p>
         </aside>
-      </section>
+      </section> : <PeriodSummaryPanel config={config} periodType={activePeriod} anchorDate={date} savedDays={savedDays} manualPeriods={manualPeriods} onSaveManualPeriod={saveManualPeriod} />}
     </main>
   );
 }
