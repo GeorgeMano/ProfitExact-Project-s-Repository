@@ -6,6 +6,10 @@
 .landing-brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .landing-header nav { display: flex; align-items: center; gap: 26px; }
 .landing-header nav a { color: var(--muted); font-size: 14px; font-weight: 700; text-decoration: none; }
+.landing-header-actions { display: flex; align-items: center; gap: 8px; }
+.landing-header-link { min-height: 40px; border: 0; background: transparent; color: var(--brand); padding: 0 10px; font-weight: 800; }
+.inline-link { border: 0; background: transparent; color: var(--brand); padding: 0; font: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.hero-signin { margin: 16px 0 0; color: var(--muted); font-size: 14px; }
 .landing-header-button { min-height: 40px; border: 1px solid rgba(7,92,85,.2); border-radius: 10px; background: #fff; color: var(--brand); padding: 0 15px; font-weight: 800; }
 .landing-hero { display: grid; grid-template-columns: minmax(0,1.08fr) minmax(380px,.92fr); align-items: center; gap: 58px; padding-block: 82px 72px; }
 .landing-kicker { margin: 0 0 12px; color: var(--brand); font-size: 12px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -141,7 +145,7 @@
 
 @media (max-width: 600px) {
   .landing-header, .landing-hero, .landing-section, .onboarding-explainer, .audience-section, .transparency-section, .support-section, .final-cta, .landing-footer, .trust-strip, .account-header, .account-layout { width: min(100% - 28px,1180px); }
-  .landing-header-button { display: none; }
+  .landing-header-button, .landing-header-link { display: none; }
   .landing-hero { gap: 38px; padding-block: 46px; }
   .hero-copy h1 { font-size: 43px; }
   .hero-lead { font-size: 16px; }

@@ -4,8 +4,16 @@ import type { SavedManualPeriod } from "@/lib/finance/manual-period";
 import { platformsFor } from "@/lib/finance/platform-entry";
 import type { SavedWorkDay } from "@/lib/finance/weekly-summary";
 import {
+  rebuildHistory,
+  type EnergyRow,
+  type ExpenseRow,
+  type PlatformEarningsRow,
+  type WorkEntryRow,
+} from "./supabase-history";
+import {
   createEmptyWorkspace,
   parseOnboardingConfig,
+  type WorkspaceAccount,
   type WorkspaceSnapshot,
 } from "./workspace";
 import type {
@@ -479,12 +487,95 @@ export function createSupabaseWorkspaceRepository(
     }
   }
 
+  /**
+   * Contul autentificat, ca prima pagină să poată oferi reluarea: un cont cu
+   * emailul confirmat merge direct în onboarding.
+   */
+  async function loadAccount(): Promise<WorkspaceAccount | null> {
+    const { data } = await client.auth.getUser();
+    const user = data.user;
+    if (!user?.email) return null;
+
+    return {
+      email: user.email,
+      phone: "",
+      verifiedAt: user.email_confirmed_at ?? null,
+    };
+  }
+
+  /** Zilele și perioadele salvate, recalculate cu configurația din cont. */
+  async function loadHistory(
+    snapshot: WorkspaceSnapshot,
+    contextId: string,
+    warnings: string[],
+  ) {
+    const config = snapshot.config;
+    if (!config) return;
+
+    const { data: entries, error } = await client
+      .from("work_entries")
+      .select(
+        "id, period_type, period_start, period_end, worked_days, worked_hours, total_kilometers, private_earnings",
+      )
+      .eq("context_id", contextId)
+      .order("period_start", { ascending: true });
+
+    if (error) {
+      warnings.push("Zilele salvate în cont nu au putut fi încărcate. Încearcă din nou.");
+      return;
+    }
+
+    const entryRows = (entries as WorkEntryRow[] | null) ?? [];
+    if (entryRows.length === 0) return;
+    const ids = entryRows.map((row) => row.id);
+
+    const [platforms, energy, expenses] = await Promise.all([
+      client
+        .from("platform_earnings")
+        .select(
+          "work_entry_id, platform, card_earnings, campaigns, cancellation_fees, app_tips, cash_earnings, user_credits, compensations, platform_costs, application_commission, cash_tips, kilometers",
+        )
+        .in("work_entry_id", ids),
+      client
+        .from("energy_entries")
+        .select("work_entry_id, unit_price, gasoline_cost, electric_cost")
+        .in("work_entry_id", ids),
+      client
+        .from("expenses")
+        .select("work_entry_id, category, amount")
+        .in("work_entry_id", ids),
+    ]);
+
+    if (platforms.error || energy.error || expenses.error) {
+      warnings.push("Zilele salvate în cont nu au putut fi încărcate complet. Încearcă din nou.");
+      return;
+    }
+
+    const history = rebuildHistory(config, {
+      entries: entryRows,
+      platforms: (platforms.data as PlatformEarningsRow[] | null) ?? [],
+      energy: (energy.data as EnergyRow[] | null) ?? [],
+      expenses: (expenses.data as ExpenseRow[] | null) ?? [],
+    });
+
+    snapshot.savedDays = history.savedDays;
+    snapshot.manualPeriods = history.manualPeriods;
+
+    if (history.skipped > 0) {
+      warnings.push(
+        `${history.skipped} ${history.skipped === 1 ? "perioadă salvată nu are" : "perioade salvate nu au"} comisionul completat și nu au putut fi încărcate.`,
+      );
+    }
+  }
+
   return {
     mode: "account",
 
     async load(): Promise<WorkspaceLoadResult> {
       const snapshot = createEmptyWorkspace();
       const warnings: string[] = [];
+
+      snapshot.account = await loadAccount();
 
       const context = await findContext();
       if (!context) return { snapshot, warnings };
@@ -579,8 +670,10 @@ export function createSupabaseWorkspaceRepository(
         warnings.push("Configurația din cont nu a trecut validarea și a fost ignorată.");
       }
 
-      // Istoricul detaliat al perioadelor se reconstruiește după decizia despre
-      // defalcarea pe platformă; până atunci se încarcă numai configurația.
+      if (snapshot.config) {
+        await loadHistory(snapshot, context.id, warnings);
+      }
+
       return { snapshot, warnings };
     },
 

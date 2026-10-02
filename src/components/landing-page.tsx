@@ -5,9 +5,11 @@ import { BrandMark } from "./brand-mark";
 
 export function LandingPage({
   onCreateAccount,
+  onSignIn,
   onResume,
 }: {
   onCreateAccount: () => void;
+  onSignIn: () => void;
   /** Există date salvate pe acest dispozitiv: butonul duce înapoi în aplicație. */
   onResume?: () => void;
 }) {
@@ -31,7 +33,7 @@ export function LandingPage({
           <a href="#pentru-cine">Cui i se adresează</a>
           <a href="#suport">Suport</a>
         </nav>
-        {onResume ? <button className="landing-header-button" type="button" onClick={onResume}>Intră în aplicație</button> : <button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button>}
+        {onResume ? <button className="landing-header-button" type="button" onClick={onResume}>Intră în aplicație</button> : <div className="landing-header-actions"><button className="landing-header-link" type="button" onClick={onSignIn}>Intră în cont</button><button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button></div>}
       </header>
 
       <section className="landing-hero" id="sus">
@@ -44,6 +46,7 @@ export function LandingPage({
             <button className={onResume ? "landing-secondary" : "landing-primary"} type="button" onClick={onCreateAccount}>Creează cont gratuit</button>
             <a className="landing-secondary" href="#cum-functioneaza">Vezi cum funcționează</a>
           </div>
+          {onResume ? null : <p className="hero-signin">Ai deja cont? <button className="inline-link" type="button" onClick={onSignIn}>Intră în cont</button></p>}
           <div className="hero-facts" aria-label="Detalii principale">
             <span>14 zile de probă</span>
             <span>24,99 RON/lună după probă</span>

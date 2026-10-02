@@ -22,6 +22,12 @@ export interface UseWorkspaceResult {
   warnings: string[];
   update: (recipe: (current: WorkspaceSnapshot) => WorkspaceSnapshot) => void;
   reset: () => void;
+  /**
+   * Recitește datele după conectare sau ieșire din cont: alege din nou unde
+   * se salvează și întoarce instantaneul nou, ca aplicația să știe imediat
+   * unde să ducă utilizatorul.
+   */
+  reload: () => Promise<WorkspaceSnapshot>;
 }
 
 /**
@@ -93,6 +99,21 @@ export function useWorkspace(): UseWorkspaceResult {
     };
   }, []);
 
+  const reload = useCallback(async () => {
+    // Ce era încă în fereastra de comasare se salvează înainte de schimbare.
+    if (timerRef.current) clearTimeout(timerRef.current);
+    await flush();
+
+    const repository = await resolveRepository();
+    repositoryRef.current = repository;
+    const { snapshot: loaded, warnings: loadWarnings } = await repository.load();
+
+    setMode(repository.mode);
+    setSnapshot(loaded);
+    setWarnings(loadWarnings);
+    return loaded;
+  }, [flush]);
+
   // Ultima salvare la închiderea paginii, ca să nu se piardă modificarea aflată
   // încă în fereastra de comasare.
   useEffect(() => {
@@ -133,5 +154,5 @@ export function useWorkspace(): UseWorkspaceResult {
     void repositoryRef.current?.clear();
   }, []);
 
-  return { status, mode, snapshot, warnings, update, reset };
+  return { status, mode, snapshot, warnings, update, reset, reload };
 }

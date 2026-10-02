@@ -6,7 +6,7 @@ const supabasePublicKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-/** Codul fix acceptat pentru email și telefon în modul de depanare local. */
+/** Codul fix acceptat pentru email în modul de depanare local. */
 export const DEMO_VERIFICATION_CODE = "123456";
 
 let browserClient: SupabaseClient | null = null;
@@ -18,8 +18,8 @@ export function hasSupabaseConfig() {
 /**
  * Modul de depanare este ACTIV IMPLICIT când aplicația rulează local
  * (`npm run dev`), indiferent dacă Supabase este configurat sau nu.
- * În acest mod nu se trimite niciun email și niciun SMS, iar codul acceptat
- * atât pentru email cât și pentru telefon este DEMO_VERIFICATION_CODE.
+ * În acest mod nu se trimite niciun email, iar codul acceptat este
+ * DEMO_VERIFICATION_CODE.
  *
  * Ca să testezi local fluxul real prin Supabase, pune în .env.local:
  *   NEXT_PUBLIC_DEMO_AUTH=off

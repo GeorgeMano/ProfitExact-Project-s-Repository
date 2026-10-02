@@ -35,8 +35,9 @@ export const WORKSPACE_VERSION = 1;
 
 export interface WorkspaceAccount {
   email: string;
+  /** Neutilizat deocamdată: înregistrarea se face numai cu email. */
   phone: string;
-  /** Momentul la care emailul și telefonul au fost confirmate. */
+  /** Momentul la care emailul a fost confirmat. */
   verifiedAt: string | null;
 }
 

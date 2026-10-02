@@ -37,6 +37,30 @@
   object-fit: contain;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-actions button {
+  white-space: nowrap;
+}
+
+.sign-out-button {
+  min-height: 38px;
+  border: 1px solid rgba(7, 92, 85, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand);
+  padding: 0 13px;
+  font-weight: 800;
+}
+
+.sign-out-button:hover {
+  border-color: var(--brand);
+}
+
 .profile-pill {
   border: 1px solid rgba(7, 92, 85, 0.16);
   border-radius: 999px;
@@ -725,11 +749,9 @@
     min-height: 66px;
   }
 
-  .profile-pill {
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .profile-pill,
+  .topbar-actions .account-back {
+    display: none;
   }
 
   .intro {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OnboardingConfig } from "@/domain/onboarding";
 import {
   upsertManualPeriod,
@@ -10,17 +10,24 @@ import {
   upsertSavedWorkDay,
   type SavedWorkDay,
 } from "@/lib/finance/weekly-summary";
+import {
+  clearPendingRegistration,
+  readPendingRegistration,
+  type PendingRegistration,
+} from "@/lib/persistence/pending-registration";
 import { useWorkspace } from "@/lib/persistence/use-workspace";
+import { isDemoSignedOut, setDemoSignedOut, signOut } from "@/lib/auth/session";
 import { AccountCreation } from "./account-creation";
 import { DailyCalculator } from "./daily-calculator";
 import { LandingPage } from "./landing-page";
 import { OnboardingFlow } from "./onboarding-flow";
+import { SignIn } from "./sign-in";
 import "./welcome-flow.css";
 
-type AppStage = "landing" | "account" | "onboarding" | "calculator";
+type AppStage = "landing" | "account" | "signin" | "onboarding" | "calculator";
 
 export function ProfitExactApp() {
-  const { status, mode, snapshot, warnings, update, reset } = useWorkspace();
+  const { status, mode, snapshot, warnings, update, reset, reload } = useWorkspace();
 
   // Aplicația pornește mereu cu prima pagină. Dacă pe acest dispozitiv există
   // date salvate, prima pagină oferă „Continuă de unde ai rămas”, în loc să
@@ -33,26 +40,71 @@ export function ProfitExactApp() {
 
   // Unde duce „Continuă”: calculatorul dacă onboarding-ul e gata, altfel
   // onboarding-ul pentru un cont deja verificat. Fără date, nu există reluare.
-  const resumeStage: AppStage | null = snapshot.config
+  // O înregistrare începută și neterminată revine la pasul codului. Se
+  // recitește când utilizatorul se întoarce pe prima pagină din formular.
+  const [pendingVersion, setPendingVersion] = useState(0);
+  const pendingRegistration = useMemo<PendingRegistration | null>(() => {
+    if (status !== "ready") return null;
+    // Un cont deja verificat nu mai are nimic de reluat la înregistrare.
+    if (snapshot.config || snapshot.account?.verifiedAt) return null;
+    return readPendingRegistration();
+    // `pendingVersion` forțează recitirea din storage după revenirea pe prima pagină.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, snapshot.config, snapshot.account, pendingVersion]);
+
+  // În modul de depanare local, „Ieși din cont” este reținut pe calculator:
+  // datele rămân, dar reluarea cere o nouă conectare.
+  const demoSignedOut = useMemo(
+    () => status === "ready" && mode === "demo" && isDemoSignedOut(),
+    // `pendingVersion` forțează recitirea după conectare sau ieșire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, mode, pendingVersion],
+  );
+
+  const resumeStage: AppStage | null = demoSignedOut
+    ? null
+    : snapshot.config
     ? "calculator"
     : snapshot.account?.verifiedAt
       ? "onboarding"
-      : null;
+      : pendingRegistration
+        ? "account"
+        : null;
+  // „Creează cont” pornește întotdeauna de la zero; „Continuă” reia pasul.
+  const [resumingRegistration, setResumingRegistration] = useState(false);
 
+  // După confirmarea emailului există o sesiune nouă: datele se recitesc ca
+  // salvarea să meargă de acum în contul real, nu în locul de dinainte.
   const completeAccount = useCallback(
-    (account: { email: string; phone: string }) => {
+    async (account: { email: string }) => {
+      setDemoSignedOut(false);
+      await reload();
       update((current) => ({
         ...current,
-        account: {
+        account: current.account ?? {
           email: account.email,
-          phone: account.phone,
+          phone: "",
           verifiedAt: new Date().toISOString(),
         },
       }));
+      setPendingVersion((version) => version + 1);
       setStage("onboarding");
     },
-    [update],
+    [reload, update],
   );
+
+  const completeSignIn = useCallback(async () => {
+    const loaded = await reload();
+    setPendingVersion((version) => version + 1);
+    setStage(loaded.config ? "calculator" : loaded.account ? "onboarding" : "landing");
+  }, [reload]);
+
+  const leaveAccount = useCallback(async () => {
+    await signOut();
+    await reload();
+    setPendingVersion((version) => version + 1);
+    setStage("landing");
+  }, [reload]);
 
   const completeOnboarding = useCallback(
     (config: OnboardingConfig) => {
@@ -83,6 +135,9 @@ export function ProfitExactApp() {
   );
 
   const startOver = useCallback(() => {
+    clearPendingRegistration();
+    setDemoSignedOut(false);
+    setPendingVersion((version) => version + 1);
     reset();
     setStage("landing");
   }, [reset]);
@@ -103,15 +158,48 @@ export function ProfitExactApp() {
   if (stage === "landing") {
     return (
       <LandingPage
-        onCreateAccount={() => setStage("account")}
-        onResume={resumeStage ? () => setStage(resumeStage) : undefined}
+        onCreateAccount={() => {
+          setResumingRegistration(false);
+          setStage("account");
+        }}
+        onSignIn={() => setStage("signin")}
+        onResume={
+          resumeStage
+            ? () => {
+                setResumingRegistration(resumeStage === "account");
+                setStage(resumeStage);
+              }
+            : undefined
+        }
       />
     );
   }
 
   if (stage === "account") {
     return (
-      <AccountCreation onBack={() => setStage("landing")} onContinue={completeAccount} />
+      <AccountCreation
+        resume={resumingRegistration ? pendingRegistration : null}
+        onBack={() => {
+          setPendingVersion((version) => version + 1);
+          setStage("landing");
+        }}
+        onContinue={completeAccount}
+        onSignIn={() => setStage("signin")}
+      />
+    );
+  }
+
+  if (stage === "signin") {
+    return (
+      <SignIn
+        demoAccountEmail={mode === "demo" ? (snapshot.account?.email ?? null) : null}
+        onBack={() => setStage("landing")}
+        onCreateAccount={() => {
+          setResumingRegistration(false);
+          setStage("account");
+        }}
+        onSignedIn={completeSignIn}
+      />
     );
   }
 
@@ -130,6 +218,7 @@ export function ProfitExactApp() {
       onSaveManualPeriod={saveManualPeriod}
       onEditOnboarding={() => setStage("onboarding")}
       onStartOver={startOver}
+      onSignOut={leaveAccount}
     />
   );
 }

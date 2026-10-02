@@ -9,34 +9,29 @@ import {
   type OnboardingConfig,
 } from "@/domain/onboarding";
 import {
-  calculateDailyResult,
   formatFleetAlert,
   formatResultAlert,
-  roundMoney,
 } from "@/lib/finance/daily-result";
-import {
-  allocateRecurringCosts,
-  allocateRecurringCostsForRange,
-  inclusiveDays,
-} from "@/lib/finance/recurring-cost";
 import type { SavedManualPeriod } from "@/lib/finance/manual-period";
 import {
-  calculatePlatformBreakdown,
-  combinePlatformEntries,
   emptyPlatformEntry,
   hasRequiredEarnings,
   missingEarningsMessage,
   platformsFor,
-  type PlatformEnergyBasis,
   type PlatformEntryInput,
 } from "@/lib/finance/platform-entry";
 import {
   getPeriodBounds,
   summarizePeriod,
-  toSavedPlatformEntry,
   type SavedWorkDay,
   type SummaryPeriod,
 } from "@/lib/finance/weekly-summary";
+import {
+  buildSavedWorkDay,
+  calculateWorkDay,
+  calendarCostsForRange,
+  type WorkDayInput,
+} from "@/lib/finance/work-day";
 import type { WorkspaceMode } from "@/lib/persistence/workspace-repository";
 import { BrandMark } from "./brand-mark";
 import { PeriodSummaryPanel } from "./period-summary-panel";
@@ -107,6 +102,7 @@ interface DailyCalculatorProps {
   onSaveManualPeriod: (entry: SavedManualPeriod) => void;
   onEditOnboarding: () => void;
   onStartOver: () => void;
+  onSignOut: () => void | Promise<void>;
 }
 
 export function DailyCalculator({
@@ -119,6 +115,7 @@ export function DailyCalculator({
   onSaveManualPeriod,
   onEditOnboarding,
   onStartOver,
+  onSignOut,
 }: DailyCalculatorProps) {
   const [date, setDate] = useState(todayInRomania);
   const [activePeriod, setActivePeriod] = useState<"day" | SummaryPeriod>("day");
@@ -201,14 +198,16 @@ export function DailyCalculator({
   }, [activePeriod, date, savedDays, platformKeys]);
 
   // Dacă utilizatorul schimbă platformele din onboarding, câmpurile se refac.
-  useEffect(() => {
-    setPlatformEntries((current) => {
-      const unchanged =
-        current.length === platformKeys.length &&
-        current.every((entry, index) => entry.platform === platformKeys[index]);
-      return unchanged ? current : platformKeys.map(emptyPlatformEntry);
-    });
-  }, [platformKeys]);
+  // Ajustarea se face în timpul randării (nu într-un efect), ca formularul să
+  // nu apară nici măcar o clipă cu platformele vechi.
+  const [entriesPlatforms, setEntriesPlatforms] = useState(platformKeys);
+  if (entriesPlatforms !== platformKeys) {
+    setEntriesPlatforms(platformKeys);
+    const unchanged =
+      platformEntries.length === platformKeys.length &&
+      platformEntries.every((entry, index) => entry.platform === platformKeys[index]);
+    if (!unchanged) setPlatformEntries(platformKeys.map(emptyPlatformEntry));
+  }
 
   const updateEntry = <Key extends keyof PlatformEntryInput>(
     index: number,
@@ -222,12 +221,6 @@ export function DailyCalculator({
     );
   };
 
-  const recurringCosts = useMemo(
-    () => allocateRecurringCosts(config.recurringCosts, date),
-    [config.recurringCosts, date],
-  );
-  const recurringDailyTotal = recurringCosts.reduce((sum, cost) => sum + cost.dailyAmount, 0);
-  const recurringFleetTotal = recurringCosts.filter((cost) => cost.paidToFleet).reduce((sum, cost) => sum + cost.dailyAmount, 0);
   const pointCosts = [
     ["Spălare auto", washedToday ? washingCost : 0],
     ["Parcare", paidParkingToday ? parkingCost : 0],
@@ -235,14 +228,31 @@ export function DailyCalculator({
     ["Service / revizii", hadServiceToday ? serviceCost : 0],
     ["Alte taxe / costuri pe traseu", hadOtherRouteCostToday ? otherPointCost : 0],
   ] as const;
-  const oneOffDailyTotal = pointCosts.reduce((sum, [, amount]) => sum + Math.max(0, amount), 0);
   const directPhevCosts = usesDirectPhevCosts(config);
+  // Tot ce a introdus șoferul pentru zi, în forma folosită și la încărcarea
+  // din cont, ca ziua să se calculeze identic în ambele locuri.
+  const dayInput: WorkDayInput = {
+    date,
+    platforms: platformEntries,
+    privateEarnings,
+    hoursWorked,
+    inputs: {
+      sharedKilometers,
+      unitPrice,
+      gasolineCost,
+      electricCost,
+      washingCost: washedToday ? washingCost : 0,
+      parkingCost: paidParkingToday ? parkingCost : 0,
+      roadTollCost: paidRoadTollToday ? roadTollCost : 0,
+      serviceCost: hadServiceToday ? serviceCost : 0,
+      otherCost: hadOtherRouteCostToday ? otherPointCost : 0,
+    },
+  };
+  const { recurringCosts, combined, result, breakdown, sharedKilometers: sharedKilometerInput } =
+    calculateWorkDay(config, dayInput);
   // Modul „un singur total” are sens numai pe două platforme; pe una singură
   // kilometrii sunt oricum ai ei.
-  const usesSharedKilometers =
-    config.kilometerEntry === "shared" && platformEntries.length > 1;
-  const sharedKilometerInput = usesSharedKilometers ? sharedKilometers : null;
-  const combined = combinePlatformEntries(platformEntries, sharedKilometerInput);
+  const usesSharedKilometers = sharedKilometerInput !== null;
   const kilometers = combined.kilometers;
   const consumedToday = directPhevCosts
     ? null
@@ -251,104 +261,22 @@ export function DailyCalculator({
     ? Math.max(0, gasolineCost) + Math.max(0, electricCost)
     : (consumedToday ?? 0) * Math.max(0, unitPrice);
 
-  const energyBasis: PlatformEnergyBasis = directPhevCosts
-    ? { type: "phev", gasolineCost, electricCost }
-    : {
-        type: "calculated",
-        consumptionPer100Km: config.consumptionPer100Km,
-        unitPrice,
-      };
-
-  const result = calculateDailyResult({
-    ...combined,
-    privateEarnings,
-    energy: energyBasis,
-    fleetCommission: config.fleetCommission,
-    weeklyCimCost: config.weeklyCimCost,
-    recurringDailyCosts: recurringDailyTotal,
-    recurringFleetCosts: recurringFleetTotal,
-    oneOffDailyCosts: oneOffDailyTotal,
-  });
-
-  // Defalcarea pe platformă: aceleași cifre, privite pe fiecare aplicație.
-  // Suma rezultatelor de mai jos plus cursele private, minus cheltuielile
-  // comune, dă exact profitul zilei — vezi platform-entry.test.ts.
-  const breakdown = calculatePlatformBreakdown({
-    entries: platformEntries,
-    energy: energyBasis,
-    fleetCommission: config.fleetCommission,
-    sharedKilometers: sharedKilometerInput,
-  });
   const showSeparateView =
     config.profitView === "separate" && platformEntries.length > 1;
   const canCalculate = hasRequiredEarnings(platformEntries);
   const missingMessage = missingEarningsMessage();
   const resultPerHour = canCalculate && hoursWorked > 0 ? result.result / hoursWorked : null;
   const weeklyBounds = getPeriodBounds(date, "week");
-  const weeklyRecurringCosts = allocateRecurringCostsForRange(
-    config.recurringCosts,
-    weeklyBounds.startDate,
-    weeklyBounds.endDate,
+  const weeklySummary = summarizePeriod(
+    savedDays,
+    date,
+    "week",
+    calendarCostsForRange(config, weeklyBounds.startDate, weeklyBounds.endDate),
   );
-  const weeklySummary = summarizePeriod(savedDays, date, "week", {
-    cimCost: roundMoney(
-      (config.weeklyCimCost / 7) *
-        inclusiveDays(weeklyBounds.startDate, weeklyBounds.endDate),
-    ),
-    recurringCosts: roundMoney(
-      weeklyRecurringCosts.reduce((sum, cost) => sum + cost.periodAmount, 0),
-    ),
-    recurringFleetCosts: roundMoney(
-      weeklyRecurringCosts
-        .filter((cost) => cost.paidToFleet)
-        .reduce((sum, cost) => sum + cost.periodAmount, 0),
-    ),
-  });
   const saveDayInWeek = () => {
-    if (!canCalculate) return;
-    onSaveDay({
-      date,
-      // `breakdown` păstrează ordinea din `platformEntries`, deci indexul
-      // leagă valorile introduse de cele calculate.
-      platforms: breakdown.map((item, index) =>
-        toSavedPlatformEntry(platformEntries[index], item),
-      ),
-      // Tot ce a fost introdus, ca ziua să poată fi reconstituită și corectată.
-      inputs: {
-        sharedKilometers,
-        unitPrice,
-        gasolineCost,
-        electricCost,
-        washingCost: washedToday ? washingCost : 0,
-        parkingCost: paidParkingToday ? parkingCost : 0,
-        roadTollCost: paidRoadTollToday ? roadTollCost : 0,
-        serviceCost: hadServiceToday ? serviceCost : 0,
-        otherCost: hadOtherRouteCostToday ? otherPointCost : 0,
-      },
-      appRevenue: combined.appRevenue,
-      cashRevenue: combined.cashRevenue,
-      netEarnings: result.platformNetEarnings,
-      cashInHand: result.cashInHand,
-      applicationCommission: result.applicationCommission,
-      platformCosts: result.platformCosts,
-      cashTips: combined.cashTips,
-      privateEarnings,
-      amountManagedByFleet: result.amountManagedByFleet,
-      result: result.result,
-      resultBeforeCalendarCosts: roundMoney(
-        result.result + result.cimCost + result.recurringCosts,
-      ),
-      fleetBalance: result.fleetBalance,
-      fleetBalanceBeforeCalendarCosts: roundMoney(
-        result.fleetBalance - result.cimCost - recurringFleetTotal,
-      ),
-      totalEarnings: result.totalEarnings,
-      energyCost: result.energyCost,
-      fleetCommission: result.fleetCommission,
-      oneOffCosts: result.oneOffCosts,
-      hoursWorked,
-      kilometers,
-    });
+    const day = buildSavedWorkDay(config, dayInput);
+    if (!day) return;
+    onSaveDay(day);
     setLastSavedDate(date);
   };
   const persistenceNote = persistenceNoteFor(persistenceMode);
@@ -369,7 +297,11 @@ export function DailyCalculator({
       <header className="topbar">
         <a className="brand" href="#top" aria-label="ProfitExact — început"><BrandMark className="brand-mark" /><span>ProfitExact</span></a>
         <span className="profile-pill">Ridesharing · Angajat</span>
-        <button type="button" className="account-back" onClick={onStartOver}>Șterge datele salvate și reia</button>
+        <div className="topbar-actions">
+          {/* Ștergerea completă există numai pentru testarea locală; un cont real nu o are la un clic distanță. */}
+          {persistenceMode === "demo" ? <button type="button" className="account-back" onClick={onStartOver}>Șterge datele de test</button> : null}
+          <button type="button" className="sign-out-button" onClick={() => void onSignOut()}>Ieși din cont</button>
+        </div>
       </header>
       {persistenceWarnings.length > 0 ? <ul role="status" style={{ margin: "0 0 1rem", padding: "0.75rem 1rem 0.75rem 2rem", borderRadius: "0.75rem", background: "rgba(255, 176, 32, 0.12)", border: "1px solid rgba(255, 176, 32, 0.35)", fontSize: "0.875rem", lineHeight: 1.5 }}>{persistenceWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
 

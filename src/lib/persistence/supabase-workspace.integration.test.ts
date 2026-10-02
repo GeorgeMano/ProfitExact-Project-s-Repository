@@ -13,19 +13,19 @@ import type { WorkspaceRepository } from "./workspace-repository";
  * Sare automat dacă variabilele de mediu lipsesc, deci `npm test` rămâne
  * complet local și nu atinge Supabase. Ca să o rulezi:
  *
- *   1. creează un utilizator de test cu emailul ȘI telefonul deja confirmate
+ *   1. creează un utilizator de test cu emailul deja confirmat
  *      (altfel trigger-ul `auth_user_create_verified_profile` nu creează
  *      profilul, iar politicile RLS resping orice scriere):
  *
  *      insert into auth.users (
  *        instance_id, id, aud, role, email, encrypted_password,
- *        email_confirmed_at, phone, phone_confirmed_at,
+ *        email_confirmed_at,
  *        raw_app_meta_data, raw_user_meta_data, created_at, updated_at
  *      ) values (
  *        '00000000-0000-0000-0000-000000000000', gen_random_uuid(),
  *        'authenticated', 'authenticated', 'test@profitexact.test',
  *        crypt('ParolaDeTest2026!', gen_salt('bf')),
- *        now(), '+40733111222', now(),
+ *        now(),
  *        '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
  *        now(), now()
  *      );
@@ -254,6 +254,18 @@ describe.skipIf(!enabled)("scrierea în contul Supabase real", () => {
       snapshot.config?.recurringCosts.find((cost) => cost.category === "itp")
         ?.validityDays,
     ).toBe(180);
+  }, 30000);
+
+  it("citește înapoi zilele și perioadele, recalculate identic", async () => {
+    const { snapshot } = await repository.load();
+
+    expect(snapshot.savedDays.map((saved) => saved.date)).toEqual([day.date]);
+    expect(snapshot.manualPeriods.map((period) => period.id).sort()).toEqual(
+      fullSnapshot().manualPeriods.map((period) => period.id).sort(),
+    );
+    const week = snapshot.manualPeriods.find((period) => period.periodType === "week");
+    expect(week?.contribution.netEarnings).toBe(1225.78);
+    expect(week?.contribution.amountManagedByFleet).toBe(659.48);
   }, 30000);
 
   it("nu dublează nimic la a doua salvare a acelorași date", async () => {

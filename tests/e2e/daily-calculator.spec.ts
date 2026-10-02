@@ -36,16 +36,12 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   ).toBeVisible();
   await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
   await page.getByLabel("Adresă de email").fill("sofer@profitexact.test");
-  await page.getByLabel("Număr de telefon").fill("0712 345 678");
   await page.getByLabel("Parolă", { exact: true }).fill("profitexact123");
   await page.getByLabel("Confirmă parola").fill("profitexact123");
   await page.getByRole("button", { name: "Creează contul" }).click();
   await expect(page.getByRole("heading", { name: "Verifică emailul" })).toBeVisible();
   await page.getByLabel("Cod primit pe email").fill("123456");
   await page.getByRole("button", { name: "Verifică emailul" }).click();
-  await expect(page.getByRole("heading", { name: "Verifică telefonul" })).toBeVisible();
-  await page.getByLabel("Cod primit prin SMS").fill("123456");
-  await page.getByRole("button", { name: "Verifică telefonul și continuă" }).click();
 
   await expect(
     page.getByRole("heading", { name: "Ce tip de activitate faci?" }),

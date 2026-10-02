@@ -7,37 +7,29 @@ import {
   usesDirectPhevCosts,
   type OnboardingConfig,
 } from "@/domain/onboarding";
-import {
-  calculateConsumptionCost,
-  calculateFinancialResult,
-  roundMoney,
-} from "@/lib/finance/daily-result";
-import {
-  allocateRecurringCostsForRange,
-  inclusiveDays,
-} from "@/lib/finance/recurring-cost";
+import { roundMoney } from "@/lib/finance/daily-result";
+import { allocateRecurringCostsForRange } from "@/lib/finance/recurring-cost";
 import {
   createEmptyManualPeriodValues,
-  manualPeriodId,
   type ManualPeriodValues,
   type SavedManualPeriod,
 } from "@/lib/finance/manual-period";
 import {
-  calculatePlatformBreakdown,
-  combinePlatformEntries,
-  hasRequiredEarnings,
   missingEarningsMessage,
   platformsFor,
-  type PlatformEnergyBasis,
   type PlatformEntryInput,
 } from "@/lib/finance/platform-entry";
+import {
+  buildManualPeriod,
+  calculateManualPeriod,
+  calendarCostsForRange,
+} from "@/lib/finance/work-day";
 import { FleetSettlement } from "./fleet-settlement";
 import { OtherEarningsFields, PlatformEarningsFields, platformEarningsHelp } from "./platform-earnings-fields";
 import {
   aggregatePlatformEntries,
   contributionFromDay,
   getPeriodBounds,
-  toSavedPlatformEntry,
   summarizeContributions,
   type PeriodCalendarCosts,
   type SavedPlatformEntry,
@@ -117,79 +109,17 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
       ),
     }));
 
-  const oneOffCosts = values.washingCost + values.parkingCost + values.roadTollCost + values.serviceCost + values.otherCost;
   const directPhevCosts = usesDirectPhevCosts(config);
-  const usesSharedKilometers =
-    config.kilometerEntry === "shared" && values.platforms.length > 1;
-  const sharedKilometerInput = usesSharedKilometers ? values.sharedKilometers : null;
-  const combined = combinePlatformEntries(values.platforms, sharedKilometerInput);
+  const { sharedKilometers: sharedKilometerInput, combined, energyCost, canCalculate } =
+    calculateManualPeriod(config, values, calendarCosts);
+  const usesSharedKilometers = sharedKilometerInput !== null;
   const kilometers = combined.kilometers;
   const consumedInPeriod =
     (Math.max(0, kilometers) * Math.max(0, config.consumptionPer100Km)) / 100;
-  const energyCost = directPhevCosts
-    ? Math.max(0, values.gasolineCost) + Math.max(0, values.electricCost)
-    : calculateConsumptionCost(
-        kilometers,
-        config.consumptionPer100Km,
-        values.unitPrice,
-      );
-  const energyBasis: PlatformEnergyBasis = directPhevCosts
-    ? { type: "phev", gasolineCost: values.gasolineCost, electricCost: values.electricCost }
-    : { type: "calculated", consumptionPer100Km: config.consumptionPer100Km, unitPrice: values.unitPrice };
-  const breakdown = calculatePlatformBreakdown({
-    entries: values.platforms,
-    energy: energyBasis,
-    fleetCommission: config.fleetCommission,
-    sharedKilometers: sharedKilometerInput,
-  });
-  const canCalculate = hasRequiredEarnings(values.platforms);
-  const result = canCalculate
-    ? calculateFinancialResult({
-        ...combined,
-        privateEarnings: values.privateEarnings,
-        energyCost,
-        fleetCommission: config.fleetCommission,
-        cimCost: calendarCosts.cimCost,
-        recurringCosts: calendarCosts.recurringCosts,
-        recurringFleetCosts: calendarCosts.recurringFleetCosts,
-        oneOffCosts,
-      })
-    : null;
 
   const save = () => {
-    if (!result) return;
-    onSave({
-      id: manualPeriodId(periodType, startDate, endDate),
-      periodType,
-      startDate,
-      endDate,
-      values,
-      result,
-      contribution: {
-        startDate,
-        endDate,
-        platforms: breakdown.map((item, index) =>
-          toSavedPlatformEntry(values.platforms[index], item),
-        ),
-        appRevenue: combined.appRevenue,
-        cashRevenue: combined.cashRevenue,
-        netEarnings: result.platformNetEarnings,
-        cashInHand: result.cashInHand,
-        applicationCommission: result.applicationCommission,
-        platformCosts: result.platformCosts,
-        cashTips: combined.cashTips,
-        privateEarnings: values.privateEarnings,
-        amountManagedByFleet: result.amountManagedByFleet,
-        totalEarnings: result.totalEarnings,
-        energyCost: result.energyCost,
-        fleetCommission: result.fleetCommission,
-        oneOffCosts: result.oneOffCosts,
-        resultBeforeCalendarCosts: roundMoney(result.result + result.cimCost + result.recurringCosts),
-        fleetBalanceBeforeCalendarCosts: roundMoney(result.fleetBalance - result.cimCost - calendarCosts.recurringFleetCosts),
-        hoursWorked: values.hoursWorked,
-        kilometers,
-      },
-    });
+    const entry = buildManualPeriod(config, periodType, startDate, endDate, values, calendarCosts);
+    if (entry) onSave(entry);
   };
 
   return (
@@ -231,11 +161,7 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
     () => allocateRecurringCostsForRange(config.recurringCosts, startDate, endDate),
     [config.recurringCosts, startDate, endDate],
   );
-  const calendarCosts: PeriodCalendarCosts = {
-    cimCost: roundMoney((config.weeklyCimCost / 7) * inclusiveDays(startDate, endDate)),
-    recurringCosts: roundMoney(recurring.reduce((sum, cost) => sum + cost.periodAmount, 0)),
-    recurringFleetCosts: roundMoney(recurring.filter((cost) => cost.paidToFleet).reduce((sum, cost) => sum + cost.periodAmount, 0)),
-  };
+  const calendarCosts: PeriodCalendarCosts = calendarCostsForRange(config, startDate, endDate);
 
   const daysInPeriod = savedDays.filter((day) => day.date >= startDate && day.date <= endDate);
   const eligibleManualWeeks = periodType === "month"

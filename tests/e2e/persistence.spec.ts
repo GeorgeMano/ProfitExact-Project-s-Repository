@@ -10,14 +10,11 @@ import { expect, test, type Page } from "@playwright/test";
 async function createDemoAccount(page: Page) {
   await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
   await page.getByLabel("Adresă de email").fill("sofer@profitexact.test");
-  await page.getByLabel("Număr de telefon").fill("0712 345 678");
   await page.getByLabel("Parolă", { exact: true }).fill("profitexact123");
   await page.getByLabel("Confirmă parola").fill("profitexact123");
   await page.getByRole("button", { name: "Creează contul" }).click();
   await page.getByLabel("Cod primit pe email").fill("123456");
   await page.getByRole("button", { name: "Verifică emailul" }).click();
-  await page.getByLabel("Cod primit prin SMS").fill("123456");
-  await page.getByRole("button", { name: "Verifică telefonul și continuă" }).click();
 }
 
 async function completeOnboarding(page: Page) {
@@ -123,7 +120,7 @@ test("butonul de ștergere readuce aplicația la prima pagină", async ({ page }
   await createDemoAccount(page);
   await completeOnboarding(page);
 
-  await page.getByRole("button", { name: "Șterge datele salvate și reia" }).click();
+  await page.getByRole("button", { name: "Șterge datele de test" }).click();
   await expect(page.getByRole("heading", { name: /Știi cât încasezi/ })).toBeVisible();
 
   // Ștergerea trebuie să fie definitivă, nu doar o schimbare de ecran.
@@ -143,4 +140,43 @@ test("un cont verificat fără onboarding pornește tot de pe prima pagină", as
   await expect(page.getByRole("heading", { name: /Știi cât încasezi/ })).toBeVisible();
   await page.getByRole("button", { name: "Continuă de unde ai rămas" }).click();
   await expect(page.getByRole("heading", { name: "Ce tip de activitate faci?" })).toBeVisible();
+});
+
+test("înregistrarea neterminată se reia de la pasul codului", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
+  await page.getByLabel("Adresă de email").fill("sofer@profitexact.test");
+  await page.getByLabel("Parolă", { exact: true }).fill("profitexact123");
+  await page.getByLabel("Confirmă parola").fill("profitexact123");
+  await page.getByRole("button", { name: "Creează contul" }).click();
+  await expect(page.getByRole("heading", { name: "Verifică emailul" })).toBeVisible();
+
+  // Pleacă înainte să introducă codul de email.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /Știi cât încasezi/ })).toBeVisible();
+  await page.getByRole("button", { name: "Continuă de unde ai rămas" }).click();
+  await expect(page.getByRole("heading", { name: "Verifică emailul" })).toBeVisible();
+  await expect(page.getByText("sofer@profitexact.test")).toBeVisible();
+
+  await page.getByLabel("Cod primit pe email").fill("123456");
+  await page.getByRole("button", { name: "Verifică emailul" }).click();
+
+  // Fără pas de telefon: după email urmează direct onboarding-ul.
+  await expect(page.getByRole("heading", { name: "Ce tip de activitate faci?" })).toBeVisible();
+  await expect(page.getByText("Verifică telefonul")).toHaveCount(0);
+});
+
+test("„Creează cont” pornește de la zero chiar dacă există o înregistrare începută", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
+  await page.getByLabel("Adresă de email").fill("sofer@profitexact.test");
+  await page.getByLabel("Parolă", { exact: true }).fill("profitexact123");
+  await page.getByLabel("Confirmă parola").fill("profitexact123");
+  await page.getByRole("button", { name: "Creează contul" }).click();
+  await expect(page.getByRole("heading", { name: "Verifică emailul" })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
+  await expect(page.getByRole("heading", { name: "Creează contul" })).toBeVisible();
+  await expect(page.getByLabel("Adresă de email")).toHaveValue("");
 });
