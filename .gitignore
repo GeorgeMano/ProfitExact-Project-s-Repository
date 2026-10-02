@@ -27,8 +27,9 @@
 *.tsbuildinfo
 next-env.d.ts
 
-# Capturi de ecran de lucru
+# Capturi de ecran de lucru și imagini de test cu date reale
 /Claude outputs/
+/tests/fixtures/private/
 
 # Instrucțiuni generate local de instrumentele de dezvoltare
 /AGENTS.md

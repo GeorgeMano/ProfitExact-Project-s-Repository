@@ -18,7 +18,10 @@ import {
   missingEarningsMessage,
   platformsFor,
   type PlatformEntryInput,
+  type PlatformKey,
 } from "@/lib/finance/platform-entry";
+import { resolvePeriod } from "@/lib/finance/period-sources";
+import { entryFromReading, type ScreenshotReading } from "@/lib/ocr/earnings-screenshot";
 import {
   buildManualPeriod,
   calculateManualPeriod,
@@ -28,7 +31,6 @@ import { FleetSettlement } from "./fleet-settlement";
 import { OtherEarningsFields, PlatformEarningsFields, platformEarningsHelp } from "./platform-earnings-fields";
 import {
   aggregatePlatformEntries,
-  contributionFromDay,
   getPeriodBounds,
   summarizeContributions,
   type PeriodCalendarCosts,
@@ -42,6 +44,15 @@ import {
 // pentru importurile existente.
 export type { ManualPeriodValues, SavedManualPeriod };
 
+/** O captură citită în alt formular, de aplicat în formularul perioadei. */
+export interface IncomingCapture {
+  id: number;
+  platform: PlatformKey;
+  periodType: SummaryPeriod;
+  anchorDate: string;
+  reading: ScreenshotReading;
+}
+
 interface PeriodSummaryPanelProps {
   config: OnboardingConfig;
   periodType: SummaryPeriod;
@@ -49,6 +60,13 @@ interface PeriodSummaryPanelProps {
   savedDays: SavedWorkDay[];
   manualPeriods: SavedManualPeriod[];
   onSaveManualPeriod: (entry: SavedManualPeriod) => void;
+  /** Șterge un total introdus; zilele înlocuite de el revin în calcul. */
+  onDeleteManualPeriod: (id: string) => void;
+  incomingCapture: IncomingCapture | null;
+  onIncomingCaptureUsed: () => void;
+  onCaptureForOtherPeriod: (
+    platform: PlatformKey,
+  ) => (period: "week" | "month", reading: ScreenshotReading) => void;
   /** Ce se întâmplă cu datele introduse: demo local, cont real sau deloc. */
   persistenceNote: string;
 }
@@ -87,19 +105,33 @@ function NumberField({ label, value, onChange, suffix = "RON", step = "0.01" }: 
   return <label className="field"><span>{label}</span><span className="input-wrap"><input type="number" min="0" step={step} value={value === 0 ? "" : value} onChange={(event) => onChange(Number(event.target.value))} /><small>{suffix}</small></span></label>;
 }
 
-function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCosts, existing, onSave }: {
+function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCosts, existing, replacing, incoming, onCaptureForOtherPeriod, onSave, onDelete }: {
   config: OnboardingConfig;
   periodType: SummaryPeriod;
   startDate: string;
   endDate: string;
   calendarCosts: PeriodCalendarCosts;
-  existing?: SavedManualPeriod;
+  existing?: SavedManualPeriod | null;
+  /** Ce înlocuiește totalul la salvare, spus pe înțeles: „3 zile salvate”. */
+  replacing?: string | null;
+  incoming?: IncomingCapture | null;
+  onCaptureForOtherPeriod: PeriodSummaryPanelProps["onCaptureForOtherPeriod"];
   onSave: (entry: SavedManualPeriod) => void;
+  onDelete?: () => void;
 }) {
+  const periodNoun = periodType === "week" ? "săptămânii" : "lunii";
   const platformKeys = useMemo(() => platformsFor(config.platform), [config.platform]);
-  const [values, setValues] = useState<ManualPeriodValues>(
-    () => existing?.values ?? createEmptyManualPeriodValues(platformKeys),
-  );
+  const [values, setValues] = useState<ManualPeriodValues>(() => {
+    const base = existing?.values ?? createEmptyManualPeriodValues(platformKeys);
+    if (!incoming) return base;
+    // Rubricile platformei din captură vin completate; restul rămân cum erau.
+    return {
+      ...base,
+      platforms: base.platforms.map((entry) =>
+        entry.platform === incoming.platform ? entryFromReading(entry, incoming.reading) : entry,
+      ),
+    };
+  });
   const set = <Key extends keyof ManualPeriodValues>(key: Key, value: ManualPeriodValues[Key]) => setValues((current) => ({ ...current, [key]: value }));
   const setPlatform = <Key extends keyof PlatformEntryInput>(index: number, key: Key, value: PlatformEntryInput[Key]) =>
     setValues((current) => ({
@@ -128,16 +160,16 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
         <fieldset className="section-block" key={entry.platform}>
           <legend>{platformLabels[entry.platform]}</legend>
           <p className="section-help">{platformEarningsHelp(platformLabels[entry.platform], `întreaga ${periodType === "week" ? "săptămână" : "lună"}`)}</p>
-          <PlatformEarningsFields entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} onChange={(key, value) => setPlatform(index, key, value)} />
+          <PlatformEarningsFields entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} kilometersEstimated formPeriod={{ type: periodType, startDate, endDate }} initialReading={incoming?.platform === entry.platform ? incoming.reading : null} onOtherPeriod={onCaptureForOtherPeriod(entry.platform)} onChange={(key, value) => setPlatform(index, key, value)} onReplace={(next) => setValues((current) => ({ ...current, platforms: current.platforms.map((item, position) => (position === index ? next : item)) }))} />
         </fieldset>
       ))}
 
       <fieldset className="section-block"><legend>Alte încasări</legend><p className="section-help">Bani primiți în afara aplicațiilor de ridesharing, cash sau prin transfer. Rămân integral la tine și nu trec prin flotă.</p><OtherEarningsFields value={values.privateEarnings} onChange={(value) => set("privateEarnings", value)} /></fieldset>
 
-      <fieldset className="section-block"><legend>Activitatea și combustibilul perioadei</legend>{usesSharedKilometers ? <p className="section-help">Ai ales un singur total de kilometri. Introdu kilometrii reali ai perioadei, cu tot cu mersul în gol; repartizarea pe platformă se face proporțional cu încasările.</p> : null}<div className="field-grid">
+      <fieldset className="section-block"><legend>Activitatea și combustibilul perioadei</legend><p className="section-help">{usesSharedKilometers ? "Ai ales un singur total de kilometri. Introdu o estimare a kilometrilor reali ai perioadei, din kilometrajul mașinii, cu tot cu mersul în gol; repartizarea pe platformă se face proporțional cu încasările." : "Aplicațiile nu arată kilometrii pe toată perioada, așa că introdu o estimare din kilometrajul mașinii. Combustibilul se calculează din ea."}</p><div className="field-grid">
         <NumberField label="Zile lucrate" value={values.workedDays} onChange={(value) => set("workedDays", value)} suffix="zile" step="1" />
         <NumberField label="Ore lucrate" value={values.hoursWorked} onChange={(value) => set("hoursWorked", value)} suffix="ore" step="0.25" />
-        {usesSharedKilometers ? <NumberField label="Kilometri parcurși în total" value={values.sharedKilometers} onChange={(value) => set("sharedKilometers", value)} suffix="km" /> : <div className="readonly-field"><span>Kilometri în total</span><strong>{kilometers.toLocaleString("ro-RO")} km</strong></div>}
+        {usesSharedKilometers ? <NumberField label="Kilometri parcurși în total (estimativ)" value={values.sharedKilometers} onChange={(value) => set("sharedKilometers", value)} suffix="km" /> : <div className="readonly-field"><span>Kilometri în total (estimativ)</span><strong>{kilometers.toLocaleString("ro-RO")} km</strong></div>}
         {directPhevCosts ? <><NumberField label="Cost benzină consumată în perioadă" value={values.gasolineCost} onChange={(value) => set("gasolineCost", value)} /><NumberField label="Cost energie electrică consumată în perioadă" value={values.electricCost} onChange={(value) => set("electricCost", value)} /></> : <><div className="readonly-field"><span>Consum configurat în onboarding</span><strong>{config.consumptionPer100Km.toLocaleString("ro-RO")} {config.fuelType === "electric" ? "kWh" : "litri"}/100 km</strong></div><NumberField label={`Prețul pe ${energyUnit(config)} folosit pentru perioadă`} value={values.unitPrice} onChange={(value) => set("unitPrice", value)} suffix={`RON/${energyUnit(config)}`} /><div className="calculation-preview"><div><span>{config.fuelType === "electric" ? "Energie calculată" : "Combustibil calculat"}</span><strong>{consumedInPeriod.toLocaleString("ro-RO", { maximumFractionDigits: 2 })} {config.fuelType === "electric" ? "kWh" : "litri"}</strong></div><div><span>Cheltuială calculată</span><strong>{money(energyCost)} RON</strong></div></div></>}
       </div><p className="helper">Dacă prețul a diferit între zile, introdu zilele separat pentru un calcul exact. Nu se scade valoarea integrală a unui plin rămas în rezervor.</p></fieldset>
 
@@ -149,12 +181,16 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
         <NumberField label="Alte taxe / costuri pe traseu" value={values.otherCost} onChange={(value) => set("otherCost", value)} />
       </div></fieldset>
 
-      <div className="save-day-panel"><div><strong>{existing ? "Actualizează perioada introdusă" : "Salvează perioada"}</strong><span>Detaliile rămân separate și pot fi folosite în centralizarea lunii.</span></div><button type="button" onClick={save} disabled={!canCalculate}>{existing ? "Actualizează" : `Salvează ${periodType === "week" ? "săptămâna" : "luna"}`}</button>{!canCalculate ? <p>{missingEarningsMessage()}</p> : null}</div>
+      <div className="save-day-panel"><div><strong>{existing ? `Actualizează totalul ${periodNoun}` : `Salvează totalul ${periodNoun}`}</strong><span>{replacing ? `La salvare, totalul înlocuiește în calcul ${replacing}. Datele înlocuite rămân salvate și revin dacă ștergi totalul.` : periodType === "week" ? "Totalul săptămânii intră și în regularizarea cu flota și în centralizarea lunii." : "Totalul lunii intră în regularizarea cu flota a lunii."}</span></div><button type="button" onClick={save} disabled={!canCalculate}>{existing ? "Actualizează" : `Salvează ${periodType === "week" ? "săptămâna" : "luna"}`}</button>{!canCalculate ? <p>{missingEarningsMessage()}</p> : null}{existing && onDelete ? <button type="button" className="delete-period-button" onClick={onDelete}>Șterge totalul {periodNoun}</button> : null}</div>
     </form>
   );
 }
 
-export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, manualPeriods, onSaveManualPeriod, persistenceNote }: PeriodSummaryPanelProps) {
+function plural(count: number, one: string, many: string) {
+  return count === 1 ? `1 ${one}` : `${count} ${many}`;
+}
+
+export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, manualPeriods, onSaveManualPeriod, onDeleteManualPeriod, incomingCapture, onIncomingCaptureUsed, onCaptureForOtherPeriod, persistenceNote }: PeriodSummaryPanelProps) {
   const { startDate, endDate } = getPeriodBounds(anchorDate, periodType);
   const periodLabel = periodType === "week" ? "săptămânii" : "lunii";
   const recurring = useMemo(
@@ -163,41 +199,68 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
   );
   const calendarCosts: PeriodCalendarCosts = calendarCostsForRange(config, startDate, endDate);
 
-  const daysInPeriod = savedDays.filter((day) => day.date >= startDate && day.date <= endDate);
-  const eligibleManualWeeks = periodType === "month"
-    ? manualPeriods.filter((entry) => entry.periodType === "week" && entry.startDate >= startDate && entry.endDate <= endDate && !daysInPeriod.some((day) => day.date >= entry.startDate && day.date <= entry.endDate))
-    : [];
-  const automaticContributions = [
-    ...daysInPeriod.map(contributionFromDay),
-    ...eligibleManualWeeks.map((entry) => entry.contribution),
-  ];
-  const hasAutomaticData = automaticContributions.length > 0;
-  const matchingManual = manualPeriods.find((entry) => entry.periodType === periodType && entry.startDate === startDate && entry.endDate === endDate);
-  const contributions = hasAutomaticData ? automaticContributions : matchingManual ? [matchingManual.contribution] : [];
+  // Ce intră în calcul: totalul introdus are prioritate față de zilele și
+  // săptămânile din interiorul lui (regula din `period-sources`).
+  const resolved = resolvePeriod(periodType, anchorDate, savedDays, manualPeriods);
+  const { contributions, manual } = resolved;
   const hasData = contributions.length > 0;
-  const summary = summarizeContributions(contributions, periodType, startDate, endDate, calendarCosts, daysInPeriod);
-  const workedDays = hasAutomaticData
-    ? daysInPeriod.length + eligibleManualWeeks.reduce((sum, entry) => sum + entry.values.workedDays, 0)
-    : matchingManual?.values.workedDays ?? 0;
+  const summary = summarizeContributions(contributions, periodType, startDate, endDate, calendarCosts, resolved.days);
+  const workedDays = resolved.workedDays;
   const resultPerHour = summary.totalHours > 0 ? summary.totalResult / summary.totalHours : null;
-  // Defalcarea perioadei: se adună pe platformă atât zilele salvate, cât și
-  // perioadele introduse manual care intră în calcul.
+
+  // Cu zile salvate, formularul totalului se deschide numai la cerere.
+  const [replacingFor, setReplacingFor] = useState<string | null>(null);
+  // O captură adusă din alt formular, pentru exact această perioadă.
+  const incoming =
+    incomingCapture &&
+    incomingCapture.periodType === periodType &&
+    getPeriodBounds(incomingCapture.anchorDate, periodType).startDate === startDate
+      ? incomingCapture
+      : null;
+  const showForm =
+    resolved.source !== "automatic" ||
+    replacingFor === `${periodType}:${startDate}` ||
+    incoming !== null;
+  const automaticParts = [
+    resolved.days.length ? plural(resolved.days.length, "zi salvată", "zile salvate") : null,
+    resolved.weeks.length ? plural(resolved.weeks.length, "săptămână introdusă ca total", "săptămâni introduse ca total") : null,
+    resolved.partialWeeks.length ? plural(resolved.partialWeeks.length, "săptămână împărțită cu luna vecină", "săptămâni împărțite cu lunile vecine") : null,
+  ].filter(Boolean);
+  const replacedParts = [
+    resolved.replacedDays.length ? plural(resolved.replacedDays.length, "zi salvată", "zile salvate") : null,
+    resolved.replacedWeeks.length ? plural(resolved.replacedWeeks.length, "săptămână introdusă ca total", "săptămâni introduse ca total") : null,
+  ].filter(Boolean);
+  const pendingReplacement = resolved.source === "automatic" ? automaticParts.join(" și ") : null;
+
+  // Defalcarea perioadei: se adună pe platformă tot ce intră în calcul.
   const platformTotals: SavedPlatformEntry[] = aggregatePlatformEntries(
     contributions.map((entry) => entry.platforms),
   );
   const showSeparateView =
     config.profitView === "separate" && platformTotals.length > 1;
+  const kilometerLabel = resolved.estimatedKilometers ? "Kilometri (estimativ)" : "Kilometri";
 
   return (
     <section className="workspace period-workspace" aria-label={`Centralizarea ${periodLabel}`}>
       <div className="form-card period-source-card">
         <section className="section-block">
           <p className="eyebrow">Sursa calculului</p>
-          <h2>{hasAutomaticData ? "Centralizare automată" : matchingManual ? "Perioadă introdusă manual" : "Nu există date în această perioadă"}</h2>
-          <p className="section-help">{hasAutomaticData ? `ProfitExact folosește ${daysInPeriod.length} zile salvate${eligibleManualWeeks.length ? ` și ${eligibleManualWeeks.length} săptămâni introduse manual` : ""}. Datele nu sunt dublate.` : matchingManual ? "Poți corecta valorile mai jos. Când vor exista date zilnice mai detaliate, ele vor avea prioritate." : `Poți introduce direct totalurile ${periodType === "week" ? "săptămânii" : "lunii"}.`}</p>
-          {hasAutomaticData ? <div className="source-chips">{daysInPeriod.map((day) => <span key={day.date}>Zi · {shortDate(day.date)}</span>)}{eligibleManualWeeks.map((entry) => <span key={entry.id}>Săptămână · {shortDate(entry.startDate)}–{shortDate(entry.endDate)}</span>)}</div> : null}
+          <h2>{resolved.source === "manual" ? `Totalul ${periodLabel}, introdus de tine` : resolved.source === "automatic" ? "Centralizare automată" : `Introdu totalul ${periodLabel}`}</h2>
+          <p className="section-help">
+            {resolved.source === "manual"
+              ? `Calculul folosește totalul introdus pentru toată ${periodType === "week" ? "săptămâna" : "luna"}.${replacedParts.length ? ` Înlocuiește în calcul ${replacedParts.join(" și ")}; datele înlocuite rămân salvate și revin dacă ștergi totalul.` : ""} Poți corecta valorile mai jos.`
+              : resolved.source === "automatic"
+                ? `ProfitExact adună ${automaticParts.join(", ")}. Datele nu sunt dublate.`
+                : `Ai captura pe toată ${periodType === "week" ? "săptămâna" : "luna"}? Introdu totalul aici. Dacă preferi, poți introduce în continuare fiecare zi, de la „Zilnic”.`}
+          </p>
+          {resolved.source === "automatic" ? <div className="source-chips">
+            {resolved.days.map((day) => <span key={day.date}>Zi · {shortDate(day.date)}</span>)}
+            {resolved.weeks.map((entry) => <span key={entry.id}>Săptămână · {shortDate(entry.startDate)}–{shortDate(entry.endDate)}</span>)}
+            {resolved.partialWeeks.map(({ week, daysInPeriod }) => <span key={week.id}>Săptămână · {shortDate(week.startDate)}–{shortDate(week.endDate)} · {daysInPeriod} din 7 zile, estimativ</span>)}
+          </div> : null}
+          {resolved.source === "automatic" && !showForm ? <button type="button" className="replace-period-button" onClick={() => setReplacingFor(`${periodType}:${startDate}`)}>Introdu totalul {periodLabel} în locul lor</button> : null}
         </section>
-        {!hasAutomaticData ? <ManualPeriodForm key={`${periodType}:${startDate}`} config={config} periodType={periodType} startDate={startDate} endDate={endDate} calendarCosts={calendarCosts} existing={matchingManual} onSave={onSaveManualPeriod} /> : <section className="section-block"><h3>Costuri repartizate automat</h3><p className="section-help">CIM și costurile recurente din onboarding sunt calculate pentru fiecare zi calendaristică a perioadei, inclusiv zilele nelucrate.</p><dl className="compact-cost-list"><div><dt>CIM</dt><dd>{money(calendarCosts.cimCost)} RON</dd></div>{recurring.map((cost) => <div key={cost.id}><dt>{cost.label}</dt><dd>{money(cost.periodAmount)} RON</dd></div>)}</dl></section>}
+        {showForm ? <ManualPeriodForm key={`${periodType}:${startDate}:${manual?.id ?? "nou"}:${incoming?.id ?? ""}`} config={config} periodType={periodType} startDate={startDate} endDate={endDate} calendarCosts={calendarCosts} existing={manual} replacing={manual ? null : pendingReplacement} incoming={incoming} onCaptureForOtherPeriod={onCaptureForOtherPeriod} onSave={(entry) => { setReplacingFor(null); onIncomingCaptureUsed(); onSaveManualPeriod(entry); }} onDelete={manual ? () => onDeleteManualPeriod(manual.id) : undefined} /> : <section className="section-block"><h3>Costuri repartizate automat</h3><p className="section-help">CIM și costurile recurente din onboarding sunt calculate pentru fiecare zi calendaristică a perioadei, inclusiv zilele nelucrate.</p><dl className="compact-cost-list"><div><dt>CIM</dt><dd>{money(calendarCosts.cimCost)} RON</dd></div>{recurring.map((cost) => <div key={cost.id}><dt>{cost.label}</dt><dd>{money(cost.periodAmount)} RON</dd></div>)}</dl></section>}
       </div>
 
       <aside className="result-column" aria-live="polite">
@@ -216,7 +279,7 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
             <div><dt>Zile lucrate</dt><dd>{workedDays}</dd></div>
             <div><dt>Ore lucrate</dt><dd>{summary.totalHours.toLocaleString("ro-RO")} ore</dd></div>
             {resultPerHour !== null ? <div><dt>Câștig după cheltuieli / oră</dt><dd>{money(resultPerHour)} RON</dd></div> : null}
-            <div><dt>Kilometri</dt><dd>{summary.totalKilometers.toLocaleString("ro-RO")} km</dd></div>
+            <div><dt>{kilometerLabel}</dt><dd>{summary.totalKilometers.toLocaleString("ro-RO")} km</dd></div>
             <div><dt>Combustibil / energie</dt><dd>− {money(summary.totalEnergyCost)} RON</dd></div>
             <div><dt>Comision flotă</dt><dd>− {money(summary.totalFleetCommission)} RON</dd></div>
             <div><dt>CIM repartizat</dt><dd>− {money(summary.totalCimCost)} RON</dd></div>
@@ -229,7 +292,7 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
             <div><dt>Câștigurile tale</dt><dd>{money(item.netEarnings)} RON</dd></div>
             <div><dt>Numerar în mână</dt><dd>{money(item.cashInHand)} RON</dd></div>
             <div><dt>Total câștiguri</dt><dd>{money(item.totalEarnings)} RON</dd></div>
-            <div><dt>Kilometri</dt><dd>{item.kilometers.toLocaleString("ro-RO")} km</dd></div>
+            <div><dt>{kilometerLabel}</dt><dd>{item.kilometers.toLocaleString("ro-RO")} km</dd></div>
             <div><dt>Combustibil / energie</dt><dd>− {money(item.energyCost)} RON</dd></div>
             <div><dt>Comision flotă</dt><dd>− {money(item.fleetCommission)} RON</dd></div>
             {item.kilometers > 0 ? <div><dt>Câștig pe kilometru</dt><dd>{money(item.resultBeforeCommonCosts / item.kilometers)} RON/km</dd></div> : null}

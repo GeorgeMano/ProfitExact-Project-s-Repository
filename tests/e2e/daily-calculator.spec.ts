@@ -136,7 +136,7 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(page.getByText("Datele nu sunt dublate.")).toBeVisible();
 
   await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
-  await expect(page.getByRole("heading", { name: "Nu există date în această perioadă" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Introdu totalul/ })).toBeVisible();
   await expect(page.getByLabel("Comision Bolt")).toHaveValue("");
   await expect(page.getByRole("button", { name: "Salvează săptămâna" })).toBeDisabled();
 
@@ -161,7 +161,7 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await page.getByLabel("Prețul pe litru folosit pentru perioadă").fill("9.78");
   await expect(page.locator(".calculation-preview").getByText("415,65 RON", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
-  await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /introdus de tine/ })).toBeVisible();
   // Flota: 1.225,78 − 566,30 = 659,48; − 122,58 comision; − 900 CIM ⇒ datorezi 363,10.
   const weekFleet = page.locator(".fleet-card");
   await expect(weekFleet.getByText("659,48 RON")).toBeVisible();
@@ -170,6 +170,6 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
 
   await page.getByRole("button", { name: "Lunar" }).click();
   await expect(page.getByRole("heading", { name: "Centralizarea lunii" })).toBeVisible();
-  await expect(page.getByText(/1 săptămâni introduse manual/)).toBeVisible();
+  await expect(page.getByText(/1 săptămână introdusă ca total/)).toBeVisible();
   await expect(page.getByText("Săptămână · 12.10.2026–18.10.2026")).toBeVisible();
 });

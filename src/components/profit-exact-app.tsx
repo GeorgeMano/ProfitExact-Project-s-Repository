@@ -134,6 +134,16 @@ export function ProfitExactApp() {
     [update],
   );
 
+  const deleteManualPeriod = useCallback(
+    (id: string) => {
+      update((current) => ({
+        ...current,
+        manualPeriods: current.manualPeriods.filter((entry) => entry.id !== id),
+      }));
+    },
+    [update],
+  );
+
   const startOver = useCallback(() => {
     clearPendingRegistration();
     setDemoSignedOut(false);
@@ -216,6 +226,7 @@ export function ProfitExactApp() {
       persistenceWarnings={warnings}
       onSaveDay={saveDay}
       onSaveManualPeriod={saveManualPeriod}
+      onDeleteManualPeriod={deleteManualPeriod}
       onEditOnboarding={() => setStage("onboarding")}
       onStartOver={startOver}
       onSignOut={leaveAccount}

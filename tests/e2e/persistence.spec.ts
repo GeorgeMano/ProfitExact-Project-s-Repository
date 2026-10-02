@@ -90,7 +90,7 @@ test("perioada introdusă manual supraviețuiește reîncărcării", async ({ pa
   await page.getByRole("button", { name: "Săptămânal" }).click();
   await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
   await expect(
-    page.getByRole("heading", { name: "Nu există date în această perioadă" }),
+    page.getByRole("heading", { name: /^Introdu totalul/ }),
   ).toBeVisible();
 
   await page.getByLabel("Plăți pentru curse în aplicație").fill("803.90");
@@ -102,14 +102,14 @@ test("perioada introdusă manual supraviețuiește reîncărcării", async ({ pa
   await page.getByLabel("Kilometri parcurși").fill("500");
   await page.getByLabel("Prețul pe litru folosit pentru perioadă").fill("9.78");
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
-  await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /introdus de tine/ })).toBeVisible();
 
   await page.reload();
   await page.getByRole("button", { name: "Continuă de unde ai rămas" }).click();
 
   await page.getByRole("button", { name: "Săptămânal" }).click();
   await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
-  await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /introdus de tine/ })).toBeVisible();
   await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("803.9");
   await expect(page.getByLabel("Credite și promoții pentru utilizatori")).toHaveValue("198.3");
   await expect(page.getByLabel("Comision Bolt")).toHaveValue("395.72");

@@ -210,7 +210,7 @@ test("centralizarea săptămânii se defalcă pe platformă", async ({ page }) =
 
   await page.getByRole("button", { name: "Săptămânal" }).click();
   await expect(
-    page.getByRole("heading", { name: "Nu există date în această perioadă" }),
+    page.getByRole("heading", { name: /^Introdu totalul/ }),
   ).toBeVisible();
 
   // Și în formularul manual încasările se introduc pe fiecare aplicație.
@@ -259,6 +259,6 @@ test("în modul împreună, centralizarea nu arată defalcarea", async ({ page }
   await uber.getByLabel("Kilometri parcurși").fill("400");
 
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
-  await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /introdus de tine/ })).toBeVisible();
   await expect(page.locator(".platform-breakdown-card")).toHaveCount(0);
 });

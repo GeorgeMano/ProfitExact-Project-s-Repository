@@ -16,18 +16,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules" (
-  echo Instalez dependintele. Dureaza un minut, e normal...
+rem Instalarea ruleaza de fiecare data: e rapida cand nu e nimic nou si
+rem aduce automat pachetele adaugate in proiect de la ultima pornire.
+echo Verific dependintele. Prima data dureaza un minut, e normal...
+echo.
+call npm install --no-audit --no-fund
+if errorlevel 1 (
   echo.
-  call npm install
-  if errorlevel 1 (
-    echo.
-    echo EROARE la instalarea dependintelor.
-    pause
-    exit /b 1
-  )
-  echo.
+  echo EROARE la instalarea dependintelor.
+  pause
+  exit /b 1
 )
+echo.
 
 echo Pornesc serverul. Browserul se deschide singur in cateva secunde.
 echo Ca sa opresti serverul: apasa Ctrl+C in fereastra asta.

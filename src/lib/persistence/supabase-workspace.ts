@@ -277,22 +277,56 @@ export function createSupabaseWorkspaceRepository(
       ),
     ];
 
-    if (rows.length === 0) return warnings;
+    let entryRows: EntryRow[] = [];
 
-    const { data, error } = await client
-      .from("work_entries")
-      .upsert(rows, { onConflict: "context_id,period_type,period_start" })
-      .select("id, period_type, period_start");
+    if (rows.length > 0) {
+      const { data, error } = await client
+        .from("work_entries")
+        .upsert(rows, { onConflict: "context_id,period_type,period_start" })
+        .select("id, period_type, period_start");
 
-    if (error) {
-      warnings.push(`Perioadele nu au putut fi salvate în cont: ${error.message}`);
-      return warnings;
+      if (error) {
+        warnings.push(`Perioadele nu au putut fi salvate în cont: ${error.message}`);
+        return warnings;
+      }
+
+      entryRows = (data as EntryRow[] | null) ?? [];
+      await savePlatformEarnings(snapshot, entryRows, warnings);
+      await saveEnergyAndExpenses(snapshot, entryRows, contextId, warnings);
     }
 
-    const entryRows = (data as EntryRow[] | null) ?? [];
-    await savePlatformEarnings(snapshot, entryRows, warnings);
-    await saveEnergyAndExpenses(snapshot, entryRows, contextId, warnings);
+    await deleteRemovedTotals(entryRows, contextId, warnings);
     return warnings;
+  }
+
+  /**
+   * Un total de săptămână sau lună șters în aplicație trebuie să dispară și
+   * din cont, altfel ar reveni la următoarea conectare și ar înlocui din nou
+   * zilele. Încasările, combustibilul și cheltuielile lui se șterg în cascadă.
+   * Zilele nu se șterg niciodată pe această cale.
+   */
+  async function deleteRemovedTotals(
+    entryRows: EntryRow[],
+    contextId: string,
+    warnings: string[],
+  ) {
+    const keptTotals = entryRows
+      .filter((row) => row.period_type === "week" || row.period_type === "month")
+      .map((row) => row.id);
+
+    let query = client
+      .from("work_entries")
+      .delete()
+      .eq("context_id", contextId)
+      .in("period_type", ["week", "month"]);
+    if (keptTotals.length > 0) {
+      query = query.not("id", "in", `(${keptTotals.join(",")})`);
+    }
+
+    const { error } = await query;
+    if (error) {
+      warnings.push(`Un total șters nu a putut fi șters și din cont: ${error.message}`);
+    }
   }
 
   /**

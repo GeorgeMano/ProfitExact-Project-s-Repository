@@ -19,13 +19,15 @@ import {
   missingEarningsMessage,
   platformsFor,
   type PlatformEntryInput,
+  type PlatformKey,
 } from "@/lib/finance/platform-entry";
 import {
   getPeriodBounds,
-  summarizePeriod,
+  summarizeContributions,
   type SavedWorkDay,
   type SummaryPeriod,
 } from "@/lib/finance/weekly-summary";
+import { resolvePeriod } from "@/lib/finance/period-sources";
 import {
   buildSavedWorkDay,
   calculateWorkDay,
@@ -34,7 +36,8 @@ import {
 } from "@/lib/finance/work-day";
 import type { WorkspaceMode } from "@/lib/persistence/workspace-repository";
 import { BrandMark } from "./brand-mark";
-import { PeriodSummaryPanel } from "./period-summary-panel";
+import { PeriodSummaryPanel, type IncomingCapture } from "./period-summary-panel";
+import type { ScreenshotReading } from "@/lib/ocr/earnings-screenshot";
 import { FleetSettlement } from "./fleet-settlement";
 import { OtherEarningsFields, PlatformEarningsFields, platformEarningsHelp } from "./platform-earnings-fields";
 import "./daily-calculator.css";
@@ -100,6 +103,7 @@ interface DailyCalculatorProps {
   persistenceWarnings: string[];
   onSaveDay: (day: SavedWorkDay) => void;
   onSaveManualPeriod: (entry: SavedManualPeriod) => void;
+  onDeleteManualPeriod: (id: string) => void;
   onEditOnboarding: () => void;
   onStartOver: () => void;
   onSignOut: () => void | Promise<void>;
@@ -113,6 +117,7 @@ export function DailyCalculator({
   persistenceWarnings,
   onSaveDay,
   onSaveManualPeriod,
+  onDeleteManualPeriod,
   onEditOnboarding,
   onStartOver,
   onSignOut,
@@ -140,6 +145,17 @@ export function DailyCalculator({
   const [hadOtherRouteCostToday, setHadOtherRouteCostToday] = useState(false);
   const [otherPointCost, setOtherPointCost] = useState(0);
   const [lastSavedDate, setLastSavedDate] = useState<string | null>(null);
+  // Captura încărcată din formularul zilei, dar pentru o săptămână sau o lună:
+  // formularul acelei perioade se deschide cu rubricile deja completate.
+  const [incomingCapture, setIncomingCapture] = useState<IncomingCapture | null>(null);
+  const openCaptureForPeriod =
+    (platform: PlatformKey) =>
+    (period: "week" | "month", reading: ScreenshotReading) => {
+      const anchor = reading.period?.startDate ?? date;
+      setIncomingCapture({ id: Date.now(), platform, periodType: period, anchorDate: anchor, reading });
+      setDate(anchor);
+      setActivePeriod(period);
+    };
 
   // Data pe care o reflectă formularul în acest moment. Ține evidența ca
   // salvarea unei zile să nu declanșeze o reîncărcare peste ce tocmai s-a scris.
@@ -267,11 +283,21 @@ export function DailyCalculator({
   const missingMessage = missingEarningsMessage();
   const resultPerHour = canCalculate && hoursWorked > 0 ? result.result / hoursWorked : null;
   const weeklyBounds = getPeriodBounds(date, "week");
-  const weeklySummary = summarizePeriod(
-    savedDays,
-    date,
+  // Aceeași regulă ca în centralizare: totalul săptămânii, dacă există,
+  // înlocuiește zilele ei; altfel se adună zilele salvate.
+  const weekResolved = resolvePeriod("week", date, savedDays, manualPeriods);
+  const weeklySummary = summarizeContributions(
+    weekResolved.contributions,
     "week",
+    weeklyBounds.startDate,
+    weeklyBounds.endDate,
     calendarCostsForRange(config, weeklyBounds.startDate, weeklyBounds.endDate),
+    weekResolved.days,
+  );
+  const weekHasData = weekResolved.contributions.length > 0;
+  const weekIsTotal = weekResolved.source === "manual";
+  const daysOfWeek = [...weekResolved.days, ...weekResolved.replacedDays].sort((left, right) =>
+    left.date.localeCompare(right.date),
   );
   const saveDayInWeek = () => {
     const day = buildSavedWorkDay(config, dayInput);
@@ -323,6 +349,7 @@ export function DailyCalculator({
         <button type="button" className={activePeriod === "week" ? "selected" : ""} onClick={() => setActivePeriod("week")}>Săptămânal</button>
         <button type="button" className={activePeriod === "month" ? "selected" : ""} onClick={() => setActivePeriod("month")}>Lunar</button>
       </nav>
+      {activePeriod === "day" ? <p className="period-hint">Ai captura pe toată săptămâna sau luna? Alege „Săptămânal” sau „Lunar” și introdu direct totalul. Altfel, introdu fiecare zi aici.</p> : null}
 
       {activePeriod === "day" ? <section className="workspace" aria-label="Calculator zilnic">
         <form className="form-card" onSubmit={(event) => event.preventDefault()}>
@@ -330,7 +357,7 @@ export function DailyCalculator({
             <fieldset className="section-block" key={entry.platform}>
               <legend>{platformLabels[entry.platform]}</legend>
               <p className="section-help">{platformEarningsHelp(platformLabels[entry.platform], "ziua respectivă")}</p>
-              <PlatformEarningsFields entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} onChange={(key, value) => updateEntry(index, key, value)} />
+              <PlatformEarningsFields key={`${entry.platform}:${date}`} entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} formPeriod={{ type: "day", startDate: date, endDate: date }} onOtherPeriod={openCaptureForPeriod(entry.platform)} onChange={(key, value) => updateEntry(index, key, value)} onReplace={(next) => setPlatformEntries((current) => current.map((item, position) => (position === index ? next : item)))} />
             </fieldset>
           ))}
 
@@ -349,7 +376,7 @@ export function DailyCalculator({
             <DailyExpenseQuestion question="Ai avut o cheltuială de service sau revizie azi?" label="Suma plătită la service" enabled={hadServiceToday} value={serviceCost} onToggle={(enabled) => { setHadServiceToday(enabled); if (!enabled) setServiceCost(0); }} onChange={setServiceCost} />
             <DailyExpenseQuestion question="Ai avut altă taxă sau cheltuială pe traseu azi?" label="Suma plătită — de exemplu acces aeroport" enabled={hadOtherRouteCostToday} value={otherPointCost} onToggle={(enabled) => { setHadOtherRouteCostToday(enabled); if (!enabled) setOtherPointCost(0); }} onChange={setOtherPointCost} />
           </div><p className="helper">Service-ul va fi păstrat și în jurnal cu data, kilometrajul și descrierea intervenției.</p></fieldset>
-          <div className="save-day-panel"><div><strong>{savedDayForDate ? `Corectezi ziua de ${shortDate(date)}` : "Centralizează ziua în săptămână"}</strong><span>{savedDayForDate ? "Câmpurile sunt completate cu ce ai introdus atunci. Salvarea actualizează ziua, nu adaugă una nouă." : "Dacă revii la aceeași dată și salvezi din nou, ziua este actualizată, nu dublată."}</span></div><button type="button" onClick={saveDayInWeek} disabled={!canCalculate}>{savedDayForDate ? "Actualizează ziua" : "Salvează ziua în săptămână"}</button>{!canCalculate ? <p>{missingMessage}</p> : null}{lastSavedDate === date ? <p>Ziua de {shortDate(date)} este inclusă în totalul săptămânii.</p> : null}</div>
+          <div className="save-day-panel"><div><strong>{savedDayForDate ? `Corectezi ziua de ${shortDate(date)}` : "Centralizează ziua în săptămână"}</strong><span>{savedDayForDate ? "Câmpurile sunt completate cu ce ai introdus atunci. Salvarea actualizează ziua, nu adaugă una nouă." : "Dacă revii la aceeași dată și salvezi din nou, ziua este actualizată, nu dublată."}</span></div><button type="button" onClick={saveDayInWeek} disabled={!canCalculate}>{savedDayForDate ? "Actualizează ziua" : "Salvează ziua în săptămână"}</button>{!canCalculate ? <p>{missingMessage}</p> : null}{weekIsTotal ? <p className="week-total-note">Săptămâna aceasta are un total introdus. Ziua se salvează, dar intră în calcul doar dacă ștergi totalul săptămânii.</p> : lastSavedDate === date ? <p>Ziua de {shortDate(date)} este inclusă în totalul săptămânii.</p> : null}</div>
         </form>
 
         <aside className="result-column" aria-live="polite">
@@ -383,10 +410,10 @@ export function DailyCalculator({
             {item.resultPerKm !== null ? <div><dt>Câștig pe kilometru</dt><dd>{money(item.resultPerKm)} RON/km</dd></div> : null}
           </dl>)}<p className="helper">Sumele de mai sus nu includ CIM-ul, chiria, RCA, spălarea sau parcarea: acelea sunt ale zilei și ale mașinii, nu ale unei aplicații. Profitul final al zilei este același, fie că îl privești împreună sau separat.</p></section> : null}
           {canCalculate ? <FleetSettlement title="Regularizarea zilei" balance={result.fleetBalance} amountManagedByFleet={result.amountManagedByFleet} fleetCommission={result.fleetCommission} cimCost={result.cimCost} cimLabel="CIM alocat zilei (÷ 7)" otherFleetCosts={result.recurringFleetCosts} note="Valoarea zilei intră în regularizarea săptămânală numai după salvare." /> : null}
-          <section className={`weekly-card ${weeklySummary.totalFleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea săptămânii</p><p className="weekly-range">{shortDate(weeklySummary.startDate)} – {shortDate(weeklySummary.endDate)}</p><h2>{weeklySummary.days.length ? formatFleetAlert(weeklySummary.totalFleetBalance) : "Nicio zi salvată încă"}</h2>{weeklySummary.days.length ? <><div className="weekly-metrics"><div><span>Zile</span><strong>{weeklySummary.days.length}</strong></div><div><span>Ore</span><strong>{weeklySummary.totalHours.toLocaleString("ro-RO")}</strong></div><div><span>Kilometri</span><strong>{weeklySummary.totalKilometers.toLocaleString("ro-RO")}</strong></div><div><span>Îți rămân</span><strong>{money(weeklySummary.totalResult)} RON</strong></div></div><div className="saved-days">{weeklySummary.days.map((day) => <button type="button" key={day.date} className={day.date === date ? "selected" : ""} aria-label={`Deschide ziua de ${shortDate(day.date)}`} onClick={() => { setActivePeriod("day"); setDate(day.date); }}>{shortDate(day.date)} · {day.hoursWorked.toLocaleString("ro-RO")} ore</button>)}</div></> : <p className="weekly-empty">Salvează fiecare zi lucrată; soldul pentru plată se actualizează pe toată săptămâna luni–duminică.</p>}</section>
+          <section className={`weekly-card ${weeklySummary.totalFleetBalance > 0 ? "owes" : "receives"}`}><p className="eyebrow">Regularizarea săptămânii</p><p className="weekly-range">{shortDate(weeklySummary.startDate)} – {shortDate(weeklySummary.endDate)}</p><h2>{weekHasData ? formatFleetAlert(weeklySummary.totalFleetBalance) : "Nicio zi salvată încă"}</h2>{weekHasData ? <><div className="weekly-metrics"><div><span>Zile</span><strong>{weekResolved.workedDays}</strong></div><div><span>Ore</span><strong>{weeklySummary.totalHours.toLocaleString("ro-RO")}</strong></div><div><span>{weekResolved.estimatedKilometers ? "Km (estimativ)" : "Kilometri"}</span><strong>{weeklySummary.totalKilometers.toLocaleString("ro-RO")}</strong></div><div><span>Îți rămân</span><strong>{money(weeklySummary.totalResult)} RON</strong></div></div>{weekIsTotal ? <p className="weekly-empty">Calculat din totalul săptămânii introdus de tine. <button type="button" className="inline-link" onClick={() => setActivePeriod("week")}>Vezi totalul</button></p> : null}</> : <p className="weekly-empty">Salvează fiecare zi lucrată; soldul pentru plată se actualizează pe toată săptămâna luni–duminică.</p>}{daysOfWeek.length ? <div className="saved-days">{daysOfWeek.map((day) => <button type="button" key={day.date} className={day.date === date ? "selected" : ""} aria-label={`Deschide ziua de ${shortDate(day.date)}`} onClick={() => { setActivePeriod("day"); setDate(day.date); }}>{shortDate(day.date)} · {day.hoursWorked.toLocaleString("ro-RO")} ore</button>)}</div> : null}</section>
           <p className="preview-note">{persistenceNote}</p>
         </aside>
-      </section> : <PeriodSummaryPanel config={config} periodType={activePeriod} anchorDate={date} savedDays={savedDays} manualPeriods={manualPeriods} onSaveManualPeriod={onSaveManualPeriod} persistenceNote={persistenceNote} />}
+      </section> : <PeriodSummaryPanel config={config} periodType={activePeriod} anchorDate={date} savedDays={savedDays} manualPeriods={manualPeriods} onSaveManualPeriod={onSaveManualPeriod} onDeleteManualPeriod={onDeleteManualPeriod} incomingCapture={incomingCapture} onIncomingCaptureUsed={() => setIncomingCapture(null)} onCaptureForOtherPeriod={openCaptureForPeriod} persistenceNote={persistenceNote} />}
     </main>
   );
 }

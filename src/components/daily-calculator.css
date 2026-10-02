@@ -1007,3 +1007,191 @@
     justify-content: space-between;
   }
 }
+
+/* Completarea din captură. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.screenshot-import {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px dashed rgba(7, 92, 85, 0.35);
+  border-radius: 14px;
+  background: rgba(7, 92, 85, 0.04);
+  padding: 14px 16px;
+}
+
+.screenshot-import-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.screenshot-import-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.screenshot-import-head strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.screenshot-import-head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.screenshot-import-button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  padding: 0 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.screenshot-import-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.screenshot-import-status {
+  margin: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #fff;
+}
+
+.screenshot-import-status.ok {
+  background: #edf8f2;
+  color: var(--positive);
+}
+
+.screenshot-import-status.warn {
+  background: #fff7e6;
+  color: #7a4d00;
+}
+
+.screenshot-import-status p {
+  margin: 0 0 4px;
+}
+
+.screenshot-import-status ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.earnings-row.needs-check .earnings-input {
+  border-color: #e0a100;
+  background: #fff7e0;
+  box-shadow: 0 0 0 3px rgba(224, 161, 0, 0.18);
+}
+
+@media (max-width: 600px) {
+  .screenshot-import-head {
+    display: grid;
+  }
+
+  .screenshot-import-button {
+    width: 100%;
+  }
+}
+
+/* Săptămână sau lună introduse ca total. */
+.period-hint {
+  margin: -8px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.week-total-note {
+  color: #7a4d00 !important;
+}
+
+.replace-period-button,
+.delete-period-button {
+  min-height: 40px;
+  margin-top: 12px;
+  border: 1px solid rgba(7, 92, 85, 0.25);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand);
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.delete-period-button {
+  border-color: rgba(138, 48, 42, 0.25);
+  color: #8a302a;
+}
+
+/* Întrebarea „Pentru ce perioadă este captura?”. */
+.capture-period-choice {
+  display: grid;
+  gap: 10px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+}
+
+.capture-period-choice p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.capture-period-choice > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.capture-period-choice button,
+.capture-switch {
+  min-height: 40px;
+  border: 1px solid rgba(7, 92, 85, 0.3);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand);
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.capture-period-choice button:hover,
+.capture-switch:hover {
+  border-color: var(--brand);
+  background: rgba(7, 92, 85, 0.05);
+}
+
+.capture-period-choice .capture-cancel {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.capture-switch {
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .capture-period-choice > div {
+    display: grid;
+  }
+}
