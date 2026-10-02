@@ -3,7 +3,14 @@
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";
 
-export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }) {
+export function LandingPage({
+  onCreateAccount,
+  onResume,
+}: {
+  onCreateAccount: () => void;
+  /** Există date salvate pe acest dispozitiv: butonul duce înapoi în aplicație. */
+  onResume?: () => void;
+}) {
   const [supportNotice, setSupportNotice] = useState("");
 
   const prepareSupportMessage = (event: FormEvent<HTMLFormElement>) => {
@@ -24,7 +31,7 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
           <a href="#pentru-cine">Cui i se adresează</a>
           <a href="#suport">Suport</a>
         </nav>
-        <button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button>
+        {onResume ? <button className="landing-header-button" type="button" onClick={onResume}>Intră în aplicație</button> : <button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button>}
       </header>
 
       <section className="landing-hero" id="sus">
@@ -33,7 +40,8 @@ export function LandingPage({ onCreateAccount }: { onCreateAccount: () => void }
           <h1>Știi cât încasezi.<br /><span>ProfitExact îți arată exact ce rămâne după cheltuieli.</span></h1>
           <p className="hero-lead">Aduni într-un singur loc încasările, kilometrii, orele și toate cheltuielile activității. ProfitExact face calculele zilnice, săptămânale și lunare și îți explică rezultatul pe înțelesul tău.</p>
           <div className="hero-actions">
-            <button className="landing-primary" type="button" onClick={onCreateAccount}>Creează cont gratuit</button>
+            {onResume ? <button className="landing-primary" type="button" onClick={onResume}>Continuă de unde ai rămas</button> : null}
+            <button className={onResume ? "landing-secondary" : "landing-primary"} type="button" onClick={onCreateAccount}>Creează cont gratuit</button>
             <a className="landing-secondary" href="#cum-functioneaza">Vezi cum funcționează</a>
           </div>
           <div className="hero-facts" aria-label="Detalii principale">

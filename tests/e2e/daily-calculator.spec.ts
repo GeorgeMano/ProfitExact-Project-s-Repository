@@ -80,14 +80,17 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(page.locator(".config-strip").getByText("Pitesti", { exact: true })).toBeVisible();
 
   for (const label of [
-    "Încasări card din curse",
-    "Încasări cash din curse",
-    "Comisionul oprit de aplicație",
-    "Compensări",
-    "Tips prin aplicație/card",
-    "Tips cash",
-    "Curse private",
-    "Câți kilometri ai parcurs pentru activitate azi?",
+    "Plăți pentru curse în aplicație",
+    "Campanii",
+    "Taxe de anulare",
+    "Bacșiș în aplicație",
+    "Plăți pentru curse în numerar",
+    "Credite și promoții pentru utilizatori",
+    "Costuri și taxe",
+    "Comision Bolt",
+    "Bacșiș numerar",
+    "Curse private / alte încasări",
+    "Kilometri parcurși",
     "Câte ore ai lucrat azi?",
     "Prețul din ziua respectivă / litru",
   ]) {
@@ -97,23 +100,23 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeDisabled();
   await expect(page.locator(".weekly-metrics")).not.toBeVisible();
 
-  await page.getByLabel("Încasări card din curse").fill("500");
-  await page.getByLabel("Încasări cash din curse").fill("400");
-  await page.getByLabel("Comisionul oprit de aplicație").fill("200");
-  await page.getByLabel("Compensări").fill("20");
-  await page.getByLabel("Tips prin aplicație/card").fill("25");
-  await page.getByLabel("Tips cash").fill("15");
-  await page
-    .getByLabel("Câți kilometri ai parcurs pentru activitate azi?")
-    .fill("180");
+  await page.getByLabel("Plăți pentru curse în aplicație").fill("545");
+  await page.getByLabel("Plăți pentru curse în numerar").fill("400");
+  // Fără comisionul exact din aplicație ziua nu se calculează.
+  await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeDisabled();
+  await page.getByLabel("Comision Bolt").fill("200");
+  await page.getByLabel("Bacșiș numerar").fill("15");
+  // Totalurile se calculează ca în aplicație: 545 + 400 − 200 = 745.
+  await expect(page.locator(".earnings-total")).toHaveText(/745,00 RON/);
+  await expect(page.locator(".earnings-cash-pill").first()).toHaveText(/400,00 RON/);
+  await expect(page.locator(".earnings-cash-pill.card")).toHaveText(/345,00 RON/);
+  await page.getByLabel("Kilometri parcurși").fill("180");
   await page.getByLabel("Câte ore ai lucrat azi?").fill("8");
   await page.getByLabel("Prețul din ziua respectivă / litru").fill("7.2");
   await expect(page.getByText("Îți rămân azi")).toBeVisible();
   await expect(page.getByRole("button", { name: "Salvează ziua în săptămână" })).toBeEnabled();
 
-  await expect(
-    page.getByLabel("Câți kilometri ai parcurs pentru activitate azi?"),
-  ).toHaveValue("180");
+  await expect(page.getByLabel("Kilometri parcurși")).toHaveValue("180");
   await expect(page.getByLabel("Câte ore ai lucrat azi?")).toHaveValue("8");
   await expect(
     page.locator(".calculation-preview").getByText("110,16 RON", { exact: true }),
@@ -122,7 +125,11 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await page.getByLabel("Ai spălat mașina azi?").check();
   await page.getByLabel("Suma plătită la spălătorie").fill("20");
 
-  await expect(page.getByText("431,27 RON", { exact: true })).toBeVisible();
+  // 745 + 15 − (110,16 combustibil + 74,50 flotă + 128,57 CIM + 20 spălare)
+  await expect(page.locator(".result-value")).toHaveText("426,77 RON");
+  // Flota primește 745 − 400 = 345, oprește 74,50 + 128,57.
+  const dayFleet = page.locator(".fleet-card").first();
+  await expect(dayFleet.getByRole("heading")).toHaveText("Flota îți datorează 141,93 RON.");
   await page.getByRole("button", { name: "Salvează ziua în săptămână" }).click();
   await expect(page.getByText("Regularizarea săptămânii")).toBeVisible();
   await expect(page.getByText("1", { exact: true }).first()).toBeVisible();
@@ -134,14 +141,24 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
 
   await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
   await expect(page.getByRole("heading", { name: "Nu există date în această perioadă" })).toBeVisible();
-  await expect(page.getByLabel("Comisionul oprit de aplicație")).toHaveValue("");
+  await expect(page.getByLabel("Comision Bolt")).toHaveValue("");
   await expect(page.getByRole("button", { name: "Salvează săptămâna" })).toBeDisabled();
 
-  await page.getByLabel("Încasări card din curse").fill("803.90");
-  await page.getByLabel("Încasări cash din curse").fill("566.30");
-  await page.getByLabel("Comisionul oprit de aplicație").fill("395.72");
-  await page.getByLabel("Compensări / campanii / taxe de anulare").fill("231.30");
-  await page.getByLabel("Tips prin aplicație/card").fill("20");
+  // Săptămâna reală din ecranul Bolt „Defalcarea câștigurilor”.
+  await page.getByLabel("Plăți pentru curse în aplicație").fill("803.90");
+  await page.getByLabel("Campanii").fill("9");
+  await page.getByLabel("Taxe de anulare").fill("24");
+  await page.getByLabel("Bacșiș în aplicație").fill("20");
+  await page.getByLabel("Plăți pentru curse în numerar").fill("566.30");
+  await page.getByLabel("Credite și promoții pentru utilizatori").fill("198.30");
+  await page.getByLabel("Comision Bolt").fill("395.72");
+  // Aceleași totaluri ca în aplicația Bolt.
+  await expect(page.getByLabel("Venituri în aplicație")).toContainText("+856,90 RON");
+  await expect(page.getByLabel("Venituri în numerar")).toContainText("+764,60 RON");
+  await expect(page.locator(".earnings-total")).toHaveText(/1\.225,78 RON/);
+  await expect(page.locator(".earnings-cash-pill").first()).toHaveText(/566,30 RON/);
+  // Creditele și promoțiile se socotesc la card: 1.225,78 − 566,30.
+  await expect(page.locator(".earnings-cash-pill.card")).toHaveText(/659,48 RON/);
   await page.getByLabel("Zile lucrate").fill("4");
   await page.getByLabel("Ore lucrate").fill("25");
   await page.getByLabel("Kilometri parcurși").fill("500");
@@ -149,6 +166,11 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(page.locator(".calculation-preview").getByText("415,65 RON", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
   await expect(page.getByText("Perioadă introdusă manual")).toBeVisible();
+  // Flota: 1.225,78 − 566,30 = 659,48; − 122,58 comision; − 900 CIM ⇒ datorezi 363,10.
+  const weekFleet = page.locator(".fleet-card");
+  await expect(weekFleet.getByText("659,48 RON")).toBeVisible();
+  await expect(weekFleet.getByText("122,58 RON")).toBeVisible();
+  await expect(weekFleet.getByRole("heading")).toHaveText("Datorezi flotei 363,10 RON.");
 
   await page.getByRole("button", { name: "Lunar" }).click();
   await expect(page.getByRole("heading", { name: "Centralizarea lunii" })).toBeVisible();

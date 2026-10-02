@@ -1,4 +1,7 @@
 import type { FleetCommission } from "@/lib/finance/daily-result";
+import type { KilometerEntryMode } from "@/lib/finance/platform-entry";
+
+export type { KilometerEntryMode };
 
 export type PlatformChoice = "bolt" | "uber" | "bolt_uber";
 export type ProfitView = "together" | "separate";
@@ -41,6 +44,12 @@ export interface OnboardingConfig {
   cityName: string;
   cityKey: string;
   profitView: ProfitView;
+  /**
+   * Contează numai când se lucrează pe două platforme: kilometrii se introduc
+   * pe fiecare aplicație, sau ca un singur total al zilei repartizat după
+   * încasări. Vezi `KilometerEntryMode`.
+   */
+  kilometerEntry: KilometerEntryMode;
   vehicleOwnership: VehicleOwnership;
   fuelType: FuelType;
   hybridType: HybridType;

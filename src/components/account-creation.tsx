@@ -31,7 +31,7 @@ function AccountPromise() {
   );
 }
 
-export function AccountCreation({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
+export function AccountCreation({ onBack, onContinue }: { onBack: () => void; onContinue: (account: { email: string; phone: string }) => void }) {
   const [phase, setPhase] = useState<AccountPhase>("details");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -131,7 +131,7 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
       if (phoneCode !== DEMO_VERIFICATION_CODE) {
         return setError(`În modul de depanare local, folosește codul ${DEMO_VERIFICATION_CODE}.`);
       }
-      onContinue();
+      onContinue({ email, phone });
       return;
     }
 
@@ -147,7 +147,7 @@ export function AccountCreation({ onBack, onContinue }: { onBack: () => void; on
     setBusy(false);
 
     if (verifyError) return setError("Codul primit prin SMS este incorect sau a expirat.");
-    onContinue();
+    onContinue({ email, phone });
   };
 
   const resendEmail = async () => {

@@ -21,14 +21,37 @@ export type DailyEnergyCost =
       electricCost: number;
     };
 
-export interface DailyResultInput {
-  cardEarnings: number;
-  cashEarnings: number;
-  /** Suma exactă oprită de aplicație, introdusă din screenshot sau manual. */
+/**
+ * Modelul de încasări, după actualizarea Bolt și Uber.
+ *
+ * Aplicațiile afișează acum direct câștigul NET al șoferului („Câștigurile
+ * tale”), după comisionul și costurile oprite de platformă. Netul cuprinde deja
+ * cursele cu cardul și cu numerar, bacșișul din aplicație, campaniile, taxele
+ * de anulare și creditele sau promoțiile pentru utilizatori.
+ *
+ * Singurii bani rămași fizic la șofer sunt „Numerar în mână”. Creditele și
+ * promoțiile apar în aplicație la secțiunea de numerar, dar sunt plătite de
+ * platformă, deci ajung la flotă împreună cu banii de pe card. De aceea:
+ *
+ *   bani gestionați de flotă = câștig net − numerar în mână
+ *
+ * Comisionul aplicației și costurile platformei se păstrează doar pentru
+ * transparență: sunt deja scăzute din net și nu se mai scad încă o dată.
+ */
+export interface EarningsInput {
+  /** „Câștigurile tale” din aplicație, deja după comisionul platformei. */
+  netEarnings: number;
+  /** „Numerar în mână”: banii rămași fizic la șofer. */
+  cashInHand: number;
+  /** Informativ, deja inclus în net. `null` înseamnă necunoscut. */
   applicationCommission: number | null;
-  compensations: number;
-  appTips: number;
+  /** „Costuri și taxe” afișate de platformă, informativ, deja incluse în net. */
+  platformCosts: number;
+  /** Bacșiș primit cash, în afara aplicației. Rămâne integral la șofer. */
   cashTips: number;
+}
+
+export interface DailyResultInput extends EarningsInput {
   privateEarnings: number;
   kilometers: number;
   energy: DailyEnergyCost;
@@ -39,13 +62,7 @@ export interface DailyResultInput {
   oneOffDailyCosts: number;
 }
 
-export interface FinancialResultInput {
-  cardEarnings: number;
-  cashEarnings: number;
-  applicationCommission: number | null;
-  compensations: number;
-  appTips: number;
-  cashTips: number;
+export interface FinancialResultInput extends EarningsInput {
   privateEarnings: number;
   kilometers: number;
   energyCost: number;
@@ -57,19 +74,26 @@ export interface FinancialResultInput {
 }
 
 export interface FinancialResult {
+  /** Net + comision + costuri platformă; folosit numai pentru comisionul „din brut”. */
   grossPlatformEarnings: number;
   applicationCommission: number;
+  platformCosts: number;
   platformNetEarnings: number;
+  cashInHand: number;
   totalEarnings: number;
   energyCost: number;
   fleetCommission: number;
   cimCost: number;
   recurringCosts: number;
+  /** Partea din costurile recurente reținută de flotă. */
+  recurringFleetCosts: number;
   oneOffCosts: number;
   totalExpenses: number;
   result: number;
   resultPerKm: number | null;
+  /** Banii care ajung la flotă: câștig net − numerar în mână. */
   amountManagedByFleet: number;
+  /** Pozitiv: șoferul datorează flotei. Negativ: flota datorează șoferului. */
   fleetBalance: number;
 }
 
@@ -100,30 +124,42 @@ export function calculateConsumptionCost(
   );
 }
 
+/** Baza comisionului flotei: netul din aplicație sau brutul reconstituit. */
+export function fleetCommissionBase(
+  fleetCommission: FleetCommission,
+  netEarnings: number,
+  applicationCommission: number | null,
+  platformCosts: number,
+) {
+  return fleetCommission.type === "percentage" && fleetCommission.base === "gross"
+    ? netEarnings + nonNegative(applicationCommission ?? 0) + nonNegative(platformCosts)
+    : netEarnings;
+}
+
 export function calculateFinancialResult(
   input: FinancialResultInput,
 ): FinancialResult {
-  const cardEarnings = nonNegative(input.cardEarnings);
-  const cashEarnings = nonNegative(input.cashEarnings);
-  const compensations = nonNegative(input.compensations);
-  const appTips = nonNegative(input.appTips);
+  const platformNetEarnings = roundMoney(nonNegative(input.netEarnings));
+  const cashInHand = roundMoney(nonNegative(input.cashInHand));
+  const applicationCommission = roundMoney(
+    nonNegative(input.applicationCommission ?? 0),
+  );
+  const platformCosts = roundMoney(nonNegative(input.platformCosts));
   const cashTips = nonNegative(input.cashTips);
   const privateEarnings = nonNegative(input.privateEarnings);
   const kilometers = nonNegative(input.kilometers);
 
-  const grossPlatformEarnings = roundMoney(cardEarnings + cashEarnings);
-  const applicationCommission = roundMoney(
-    nonNegative(input.applicationCommission ?? 0),
-  );
-  const platformNetEarnings = roundMoney(
-    grossPlatformEarnings - applicationCommission,
+  const grossPlatformEarnings = roundMoney(
+    platformNetEarnings + applicationCommission + platformCosts,
   );
 
   const commissionBase = nonNegative(
-    input.fleetCommission.type === "percentage" &&
-    input.fleetCommission.base === "gross"
-      ? grossPlatformEarnings
-      : platformNetEarnings,
+    fleetCommissionBase(
+      input.fleetCommission,
+      platformNetEarnings,
+      applicationCommission,
+      platformCosts,
+    ),
   );
 
   const fleetCommission =
@@ -137,15 +173,11 @@ export function calculateFinancialResult(
   const energyCost = roundMoney(nonNegative(input.energyCost));
   const cimCost = roundMoney(nonNegative(input.cimCost));
   const recurringCosts = roundMoney(nonNegative(input.recurringCosts));
-  const recurringFleetCosts = nonNegative(input.recurringFleetCosts);
+  const recurringFleetCosts = roundMoney(nonNegative(input.recurringFleetCosts));
   const oneOffCosts = roundMoney(nonNegative(input.oneOffCosts));
 
   const totalEarnings = roundMoney(
-    platformNetEarnings +
-      compensations +
-      appTips +
-      cashTips +
-      privateEarnings,
+    platformNetEarnings + cashTips + privateEarnings,
   );
 
   const totalExpenses = roundMoney(
@@ -157,9 +189,7 @@ export function calculateFinancialResult(
   );
 
   const result = roundMoney(totalEarnings - totalExpenses);
-  const amountManagedByFleet = roundMoney(
-    cardEarnings + compensations + appTips - applicationCommission,
-  );
+  const amountManagedByFleet = roundMoney(platformNetEarnings - cashInHand);
   const fleetBalance = roundMoney(
     fleetCommission + cimCost + recurringFleetCosts - amountManagedByFleet,
   );
@@ -167,12 +197,15 @@ export function calculateFinancialResult(
   return {
     grossPlatformEarnings,
     applicationCommission,
+    platformCosts,
     platformNetEarnings,
+    cashInHand,
     totalEarnings,
     energyCost,
     fleetCommission,
     cimCost,
     recurringCosts,
+    recurringFleetCosts,
     oneOffCosts,
     totalExpenses,
     result,
@@ -195,11 +228,10 @@ export function calculateDailyResult(input: DailyResultInput): DailyResult {
         );
 
   const result = calculateFinancialResult({
-    cardEarnings: input.cardEarnings,
-    cashEarnings: input.cashEarnings,
+    netEarnings: input.netEarnings,
+    cashInHand: input.cashInHand,
     applicationCommission: input.applicationCommission,
-    compensations: input.compensations,
-    appTips: input.appTips,
+    platformCosts: input.platformCosts,
     cashTips: input.cashTips,
     privateEarnings: input.privateEarnings,
     kilometers,
@@ -245,6 +277,10 @@ export function formatFleetAlert(fleetBalance: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+  if (roundMoney(fleetBalance) === 0) {
+    return "Nu datorezi nimic flotei și nici flota ție.";
+  }
 
   return fleetBalance > 0
     ? `Datorezi flotei ${amount} RON.`

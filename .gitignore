@@ -27,6 +27,9 @@
 *.tsbuildinfo
 next-env.d.ts
 
+# Capturi de ecran de lucru
+/Claude outputs/
+
 # Instrucțiuni generate local de instrumentele de dezvoltare
 /AGENTS.md
 /CLAUDE.md

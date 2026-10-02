@@ -13,6 +13,7 @@ import {
   type OnboardingConfig,
   type PlatformChoice,
   type ProfitView,
+  type KilometerEntryMode,
   type RecurringCostConfig,
   type VehicleOwnership,
 } from "@/domain/onboarding";
@@ -50,6 +51,7 @@ interface Draft {
   platform: PlatformChoice;
   city: string;
   profitView: ProfitView;
+  kilometerEntry: KilometerEntryMode;
   vehicleOwnership: VehicleOwnership;
   effectiveFrom: string;
   commissionType: "percentage" | "fixed";
@@ -81,6 +83,7 @@ const initialDraft: Draft = {
   platform: "bolt",
   city: "",
   profitView: "together",
+  kilometerEntry: "per_platform",
   vehicleOwnership: "owned",
   effectiveFrom: todayInRomania(),
   commissionType: "percentage",
@@ -237,6 +240,8 @@ function buildConfig(draft: Draft): OnboardingConfig {
     cityName: formatCityName(draft.city),
     cityKey: cityKey(draft.city),
     profitView: draft.platform === "bolt_uber" ? draft.profitView : "together",
+    kilometerEntry:
+      draft.platform === "bolt_uber" ? draft.kilometerEntry : "per_platform",
     vehicleOwnership: draft.vehicleOwnership,
     fuelType: draft.fuelType,
     hybridType: isHybrid ? draft.hybridType ?? "hev" : null,
@@ -316,7 +321,7 @@ export function OnboardingFlow({
                   <Choice key={platform} value={platform} selected={draft.platform === platform} label={platformLabels[platform]} detail={platform === "bolt_uber" ? "Folosesc ambele platforme" : `Lucrez pe ${platformLabels[platform]}`} onSelect={(value) => set("platform", value)} />
                 ))}
               </div>
-              {draft.platform === "bolt_uber" ? <div className="inline-question"><strong>Cum dorești să vezi rezultatul?</strong><div className="segmented"><button type="button" className={draft.profitView === "together" ? "selected" : ""} onClick={() => set("profitView", "together")}>Împreună</button><button type="button" className={draft.profitView === "separate" ? "selected" : ""} onClick={() => set("profitView", "separate")}>Separat pe platformă</button></div></div> : null}
+              {draft.platform === "bolt_uber" ? <><div className="inline-question"><strong>Cum dorești să vezi rezultatul?</strong><div className="segmented"><button type="button" className={draft.profitView === "together" ? "selected" : ""} onClick={() => set("profitView", "together")}>Împreună</button><button type="button" className={draft.profitView === "separate" ? "selected" : ""} onClick={() => set("profitView", "separate")}>Separat pe platformă</button></div></div><div className="inline-question"><strong>Cum introduci kilometrii?</strong><div className="segmented"><button type="button" className={draft.kilometerEntry === "per_platform" ? "selected" : ""} onClick={() => set("kilometerEntry", "per_platform")}>Pe fiecare aplicație</button><button type="button" className={draft.kilometerEntry === "shared" ? "selected" : ""} onClick={() => set("kilometerEntry", "shared")}>Un singur total</button></div><p className="step-description">{draft.kilometerEntry === "per_platform" ? "Iei kilometrii din ecranul fiecărei aplicații. Exacți pe platformă, dar nu cuprind drumul până la client, mersul între curse și drumul spre casă." : "Introduci kilometrii reali ai zilei, cu tot cu mersul în gol, deci combustibilul iese corect. Repartizarea pe platformă se face proporțional cu încasările."}</p></div></> : null}
             </Step>
           ) : null}
 
@@ -377,7 +382,7 @@ function FleetStep({ draft, set }: { draft: Draft; set: DraftSetter }) {
         <label className="onboarding-field"><span>Data efectivă</span><input type="date" value={draft.effectiveFrom} onChange={(event) => set("effectiveFrom", event.target.value)} /></label>
         <label className="onboarding-field"><span>Tip comision flotă</span><select value={draft.commissionType} onChange={(event) => set("commissionType", event.target.value as Draft["commissionType"])}><option value="percentage">Procent</option><option value="fixed">Sumă fixă</option></select></label>
         <NumberInput label="Valoare comision" value={draft.commissionValue} onChange={(value) => set("commissionValue", value)} suffix={draft.commissionType === "percentage" ? "%" : "RON"} />
-        {draft.commissionType === "percentage" ? <label className="onboarding-field"><span>Comision aplicat la</span><select value={draft.commissionBase} onChange={(event) => set("commissionBase", event.target.value as Draft["commissionBase"])}><option value="gross">Brut</option><option value="net">Net după comisionul aplicației</option></select></label> : null}
+        {draft.commissionType === "percentage" ? <label className="onboarding-field"><span>Comision aplicat la</span><select value={draft.commissionBase} onChange={(event) => set("commissionBase", event.target.value as Draft["commissionBase"])}><option value="net">Net — „Câștigurile tale” din aplicație (card + cash)</option><option value="gross">Brut — înainte de comisionul aplicației</option></select></label> : null}
       </div>
 
       <div className="cost-options">
