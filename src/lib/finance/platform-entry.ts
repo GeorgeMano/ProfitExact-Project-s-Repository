@@ -343,7 +343,7 @@ function isEntered(value: number | null) {
 
 /**
  * Ziua se poate calcula când fiecare platformă are comisionul completat exact
- * cum apare în aplicație (poate fi și 0). ProfitExact nu îl estimează.
+ * cum apare în aplicație (0 e o valoare validă). ProfitExact nu îl estimează.
  */
 export function hasRequiredEarnings(entries: PlatformEntryInput[]) {
   return (
@@ -354,7 +354,7 @@ export function hasRequiredEarnings(entries: PlatformEntryInput[]) {
 
 /** Mesajul afișat când ziua sau perioada nu se poate calcula încă. */
 export function missingEarningsMessage() {
-  return "Introdu comisionul exact cum apare în aplicație (poate fi și 0).";
+  return "Introdu comisionul exact cum apare în aplicație.";
 }
 
 export function platformsFor(choice: "bolt" | "uber" | "bolt_uber"): PlatformKey[] {
