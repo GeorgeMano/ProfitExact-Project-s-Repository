@@ -11,6 +11,7 @@ import {
   platformLabels,
   usesDirectPhevCosts,
   type OnboardingConfig,
+  vehicleShortNames,
 } from "@/domain/onboarding";
 import { roundMoney } from "@/lib/finance/daily-result";
 import { allocateRecurringCostsForRange } from "@/lib/finance/recurring-cost";
@@ -207,7 +208,7 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
         <NumberField label="Spălătorie" value={values.washingCost} onChange={(value) => set("washingCost", value)} />
         <NumberField label="Parcare" value={values.parkingCost} onChange={(value) => set("parkingCost", value)} />
         <NumberField label="Taxe de drum / pod" value={values.roadTollCost} onChange={(value) => set("roadTollCost", value)} />
-        <NumberField label="Service / revizii" value={values.serviceCost} onChange={(value) => set("serviceCost", value)} />
+        <NumberField label={`Intervenții ${vehicleShortNames[config.vehicleType]} (revizie, service, reparații)`} value={values.serviceCost} onChange={(value) => set("serviceCost", value)} />
         <NumberField label="Alte taxe / costuri pe traseu" value={values.otherCost} onChange={(value) => set("otherCost", value)} />
       </div></fieldset>
 

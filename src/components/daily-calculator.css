@@ -1336,3 +1336,8 @@
 #calcul {
   scroll-margin-top: 96px;
 }
+
+/* Înainte de completare, cardul rezultatului rămâne verde, ca textul alb să se vadă. */
+.result-card:not(.positive):not(.negative) {
+  background: var(--brand);
+}

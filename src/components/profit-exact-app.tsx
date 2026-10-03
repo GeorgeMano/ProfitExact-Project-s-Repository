@@ -1,5 +1,6 @@
 "use client";
 
+import { createEmptyWorkspace } from "@/lib/persistence/workspace";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { daysOfActivity, periodsOfActivity } from "@/lib/finance/activity";
 import type { OnboardingConfig } from "@/domain/onboarding";
@@ -80,18 +81,22 @@ export function ProfitExactApp() {
     async (account: { email: string }) => {
       setDemoSignedOut(false);
       await reload();
-      update((current) => ({
-        ...current,
-        account: current.account ?? {
-          email: account.email,
-          phone: "",
-          verifiedAt: new Date().toISOString(),
-        },
-      }));
+      const newAccount = {
+        email: account.email,
+        phone: "",
+        verifiedAt: new Date().toISOString(),
+      };
+      update((current) =>
+        mode === "demo"
+          ? // Pe acest calculator există un singur cont de test: un cont nou
+            // pornește de la zero, fără zilele sau configurarea celui vechi.
+            { ...createEmptyWorkspace(), account: newAccount }
+          : { ...current, account: current.account ?? newAccount },
+      );
       setPendingVersion((version) => version + 1);
       setStage("onboarding");
     },
-    [reload, update],
+    [mode, reload, update],
   );
 
   const completeSignIn = useCallback(async () => {

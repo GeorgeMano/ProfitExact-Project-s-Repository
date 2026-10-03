@@ -16,6 +16,8 @@ import {
   platformLabels,
   usesDirectPhevCosts,
   type OnboardingConfig,
+  vehicleShortNames,
+  tracksOdometer,
 } from "@/domain/onboarding";
 import {
   formatFleetAlert,
@@ -54,6 +56,8 @@ import { FleetSettlement } from "./fleet-settlement";
 import { MobileMenu } from "./mobile-menu";
 import { DecimalInput } from "./decimal-input";
 import { ActivitySplitCard } from "./activity-split";
+import { ServiceAlert, VehicleJournalCard, journalDays } from "./vehicle-journal";
+import { serviceKindLabels, serviceKinds, type ServiceKind } from "@/lib/finance/vehicle-service";
 import { OtherEarningsFields, PlatformEarningsFields, platformEarningsHelp } from "./platform-earnings-fields";
 import "./daily-calculator.css";
 
@@ -157,6 +161,9 @@ export function DailyCalculator({
   const [roadTollCost, setRoadTollCost] = useState(0);
   const [hadServiceToday, setHadServiceToday] = useState(false);
   const [serviceCost, setServiceCost] = useState(0);
+  const [serviceKind, setServiceKind] = useState<ServiceKind>("revizie");
+  const [serviceNote, setServiceNote] = useState("");
+  const [odometerKm, setOdometerKm] = useState(0);
   const [hadOtherRouteCostToday, setHadOtherRouteCostToday] = useState(false);
   const [otherPointCost, setOtherPointCost] = useState(0);
   const [lastSavedDate, setLastSavedDate] = useState<string | null>(null);
@@ -252,6 +259,9 @@ export function DailyCalculator({
     setPaidRoadTollToday((inputs?.roadTollCost ?? 0) > 0);
     setServiceCost(inputs?.serviceCost ?? 0);
     setHadServiceToday((inputs?.serviceCost ?? 0) > 0);
+    setServiceKind(inputs?.serviceKind ?? "revizie");
+    setServiceNote(inputs?.serviceNote ?? "");
+    setOdometerKm(inputs?.odometerKm ?? 0);
     setOtherPointCost(inputs?.otherCost ?? 0);
     setHadOtherRouteCostToday((inputs?.otherCost ?? 0) > 0);
   }, [activePeriod, date, savedDays, platformKeys, incomingDay, config]);
@@ -284,7 +294,7 @@ export function DailyCalculator({
     ["Spălare auto", washedToday ? washingCost : 0],
     ["Parcare", paidParkingToday ? parkingCost : 0],
     ["Taxe de drum / pod", paidRoadTollToday ? roadTollCost : 0],
-    ["Service / revizii", hadServiceToday ? serviceCost : 0],
+    [`Intervenție la ${vehicleShortNames[config.vehicleType]} azi`, hadServiceToday ? serviceCost : 0],
     ["Alte taxe / costuri pe traseu", hadOtherRouteCostToday ? otherPointCost : 0],
   ] as const;
   const directPhevCosts = usesDirectPhevCosts(config);
@@ -305,6 +315,8 @@ export function DailyCalculator({
       roadTollCost: paidRoadTollToday ? roadTollCost : 0,
       serviceCost: hadServiceToday ? serviceCost : 0,
       otherCost: hadOtherRouteCostToday ? otherPointCost : 0,
+      ...(tracksOdometer(config) && odometerKm > 0 ? { odometerKm } : {}),
+      ...(hadServiceToday ? { serviceKind, ...(serviceNote.trim() ? { serviceNote: serviceNote.trim() } : {}) } : {}),
     },
   };
   const { recurringCosts, combined, result, breakdown, sharedKilometers: sharedKilometerInput } =
@@ -341,6 +353,7 @@ export function DailyCalculator({
   // La mijlocul săptămânii, costurile fixe ale întregii săptămâni sunt deja
   // scăzute; rezultatul poate ieși pe minus până se adună zilele.
   const weekStillRunning = todayInRomania() <= weeklySummary.endDate;
+  const vehicleDays = useMemo(() => journalDays(savedDays, manualPeriods), [savedDays, manualPeriods]);
   const weeklyFixedCosts = weeklySummary.totalCimCost + weeklySummary.totalRecurringCosts;
   const ownBusiness = isOwnBusiness(config);
   const delivery = isDelivery(config);
@@ -408,6 +421,7 @@ export function DailyCalculator({
         {fuel ? <div><span>Combustibil</span><strong>{fuelLabels[config.fuelType]}{config.hybridType ? ` · ${config.hybridType.toUpperCase()}` : ""}</strong></div> : null}
         <button type="button" onClick={onEditOnboarding}>Modifică configurarea</button>
       </section>
+      <ServiceAlert config={config} days={vehicleDays} today={todayInRomania()} />
 
       <nav className="period-tabs segmented" aria-label="Perioada calculului">
         <button type="button" className={activePeriod === "day" ? "selected" : ""} onClick={() => setActivePeriod("day")}>Zilnic</button>
@@ -431,6 +445,7 @@ export function DailyCalculator({
           <fieldset className="section-block"><legend>{fuel ? "Activitatea zilei și combustibilul" : "Activitatea zilei"}</legend><p className="section-help">{usesSharedKilometers ? `Ai ales un singur total de kilometri. Introdu kilometrii reali ai zilei, ${delivery ? "cu tot cu drumul până la restaurant și mersul între comenzi" : "cu tot cu drumul până la client și mersul între curse"}; repartizarea pe platformă se face proporțional cu încasările.` : platformEntries.length > 1 ? "Kilometrii zilei sunt suma celor introduși mai sus, pe fiecare aplicație." : "Orele se completează în fiecare zi lucrată, indiferent dacă mașina este personală sau închiriată."}</p><div className="field-grid activity-grid">
             {usesSharedKilometers ? <NumberField className="kilometers-field" label="Câți kilometri ai parcurs azi în total?" value={sharedKilometers} onChange={setSharedKilometers} suffix="km" step="0.01" /> : <div className="readonly-field"><span>Kilometri în total azi</span><strong>{kilometers.toLocaleString("ro-RO")} km</strong></div>}
             <NumberField className="hours-field" label="Câte ore ai lucrat azi?" value={hoursWorked} onChange={setHoursWorked} suffix="ore" step="0.25" />
+            {tracksOdometer(config) ? <NumberField className="odometer-field" label="Kilometraj la bord (opțional)" value={odometerKm} onChange={(value) => setOdometerKm(Math.round(value))} suffix="km" /> : null}
             {!fuel ? null : directPhevCosts ? <><NumberField label="Cost benzină folosită azi" value={gasolineCost} onChange={setGasolineCost} /><NumberField label="Cost energie electrică folosită azi" value={electricCost} onChange={setElectricCost} /></> : <><div className="readonly-field"><span>Consum configurat</span><strong>{config.consumptionPer100Km.toLocaleString("ro-RO")} {config.fuelType === "electric" ? "kWh" : "litri"}/100 km</strong></div><NumberField label={`Prețul din ziua respectivă / ${energyUnit(config)}`} value={unitPrice} onChange={setUnitPrice} suffix={`RON/${energyUnit(config)}`} /><div className="calculation-preview"><div><span>{config.fuelType === "electric" ? "Energie calculată azi" : "Combustibil calculat azi"}</span><strong>{(consumedToday ?? 0).toLocaleString("ro-RO", { maximumFractionDigits: 2 })} {config.fuelType === "electric" ? "kWh" : "litri"}</strong></div><div><span>Cheltuială calculată</span><strong>{money(calculatedEnergyCost)} RON</strong></div></div></>}
           </div></fieldset>
 
@@ -438,9 +453,21 @@ export function DailyCalculator({
             {fuel ? <><DailyExpenseQuestion question={config.vehicleType === "car" ? "Ai spălat mașina azi?" : "Ai spălat vehiculul azi?"} label="Suma plătită la spălătorie" enabled={washedToday} value={washingCost} onToggle={(enabled) => { setWashedToday(enabled); if (!enabled) setWashingCost(0); }} onChange={setWashingCost} />
             <DailyExpenseQuestion question="Ai plătit parcare azi?" label="Suma plătită pentru parcare" enabled={paidParkingToday} value={parkingCost} onToggle={(enabled) => { setPaidParkingToday(enabled); if (!enabled) setParkingCost(0); }} onChange={setParkingCost} />
             <DailyExpenseQuestion question="Ai plătit o taxă de drum sau pod azi?" label="Suma taxelor de drum sau pod" enabled={paidRoadTollToday} value={roadTollCost} onToggle={(enabled) => { setPaidRoadTollToday(enabled); if (!enabled) setRoadTollCost(0); }} onChange={setRoadTollCost} /></> : null}
-            <DailyExpenseQuestion question={fuel ? "Ai avut o cheltuială de service sau revizie azi?" : "Ai avut o reparație azi?"} label="Suma plătită la service" enabled={hadServiceToday} value={serviceCost} onToggle={(enabled) => { setHadServiceToday(enabled); if (!enabled) setServiceCost(0); }} onChange={setServiceCost} />
+            <div className={`expense-question ${hadServiceToday ? "enabled" : ""}`}>
+              <label className="expense-question-toggle">
+                <input type="checkbox" checked={hadServiceToday} onChange={(event) => { setHadServiceToday(event.target.checked); if (!event.target.checked) { setServiceCost(0); setServiceNote(""); } }} />
+                <span>{`Ai avut o intervenție la ${vehicleShortNames[config.vehicleType]} azi? (revizie, service, reparație)`}</span>
+              </label>
+              {hadServiceToday ? <div className="service-question-fields">
+                <label><span>Tip intervenție</span><select value={serviceKind} onChange={(event) => setServiceKind(event.target.value as ServiceKind)}>{serviceKinds.map((kind) => <option key={kind} value={kind}>{serviceKindLabels[kind]}</option>)}</select></label>
+                <NumberField label="Cost intervenție" value={serviceCost} onChange={setServiceCost} />
+                <label className="wide"><span>Ce s-a făcut (opțional)</span><input type="text" maxLength={200} value={serviceNote} placeholder={config.vehicleType === "bicycle" || config.vehicleType === "e_bike" ? "ex. cameră spate, lanț" : "ex. ulei și filtre, plăcuțe față"} onChange={(event) => setServiceNote(event.target.value)} /></label>
+                {tracksOdometer(config) && serviceKind === "revizie" && odometerKm <= 0 ? <p className="service-question-note">Trece și kilometrajul la bord (la „Activitatea zilei”), ca următoarea revizie să se calculeze exact.</p> : null}
+                <p className="service-question-note" style={{ color: "var(--muted)" }}>{tracksOdometer(config) ? "Intervenția rămâne în cartea de service după ce salvezi ziua." : `Intervenția rămâne la „Reparațiile ${config.vehicleType === "bicycle" ? "bicicletei" : "bicicletei electrice"}” după ce salvezi ziua.`}</p>
+              </div> : null}
+            </div>
             <DailyExpenseQuestion question="Ai avut altă taxă sau cheltuială pe traseu azi?" label="Suma plătită — de exemplu acces aeroport" enabled={hadOtherRouteCostToday} value={otherPointCost} onToggle={(enabled) => { setHadOtherRouteCostToday(enabled); if (!enabled) setOtherPointCost(0); }} onChange={setOtherPointCost} />
-          </div><p className="helper">Service-ul va fi păstrat și în jurnal cu data, kilometrajul și descrierea intervenției.</p></fieldset>
+          </div></fieldset>
           <div className="save-day-panel"><div><strong>{savedDayForDate ? `Corectezi ziua de ${shortDate(date)}` : "Centralizează ziua în săptămână"}</strong><span>{savedDayForDate ? "Câmpurile sunt completate cu ce ai introdus atunci. Salvarea actualizează ziua, nu adaugă una nouă." : "Dacă revii la aceeași dată și salvezi din nou, ziua este actualizată, nu dublată."}</span></div><button type="button" onClick={saveDayInWeek} disabled={!canCalculate}>{savedDayForDate ? "Actualizează ziua" : "Salvează ziua în săptămână"}</button>{!canCalculate ? <p>{missingMessage}</p> : null}{weekIsTotal ? <p className="week-total-note">Săptămâna aceasta are un total introdus. Ziua se salvează, dar intră în calcul doar dacă ștergi totalul săptămânii.</p> : lastSavedDate === date ? <p>Ziua de {shortDate(date)} este inclusă în totalul săptămânii.</p> : null}</div>
         </form>
 
@@ -477,6 +504,7 @@ export function DailyCalculator({
           {canCalculate && showSeparateView && config.activity === "both" ? <ActivitySplitCard items={breakdown} totalResult={result.result} privateEarnings={privateEarnings} periodLabel="azi" /> : null}
           {canCalculate && !ownBusiness ? <FleetSettlement title="Regularizarea zilei" balance={result.fleetBalance} amountManagedByFleet={result.amountManagedByFleet} fleetCommission={result.fleetCommission} cimCost={result.cimCost} cimLabel="CIM alocat zilei (÷ 7)" otherFleetCosts={result.recurringFleetCosts} note="Valoarea zilei intră în regularizarea săptămânală numai după salvare." /> : null}
           <section className={`weekly-card ${(ownBusiness ? weeklySummary.totalResult < 0 : weeklySummary.totalFleetBalance > 0) ? "owes" : "receives"}`}><p className="eyebrow">{ownBusiness ? "Rezultatul săptămânii" : "Regularizarea săptămânii"}</p><p className="weekly-range">{shortDate(weeklySummary.startDate)} – {shortDate(weeklySummary.endDate)}</p><h2>{weekHasData ? ownBusiness ? `Îți rămân ${money(weeklySummary.totalResult)} RON, înainte de taxe` : formatFleetAlert(weeklySummary.totalFleetBalance) : "Nicio zi salvată încă"}</h2>{weekHasData ? <><div className="weekly-metrics"><div><span>Zile</span><strong>{weekResolved.workedDays}</strong></div><div><span>Ore</span><strong>{weeklySummary.totalHours.toLocaleString("ro-RO")}</strong></div><div><span>{weekResolved.estimatedKilometers ? "Km (estimativ)" : "Kilometri"}</span><strong>{weeklySummary.totalKilometers.toLocaleString("ro-RO")}</strong></div><div><span>Îți rămân</span><strong>{money(weeklySummary.totalResult)} RON</strong></div></div>{weekStillRunning && weeklyFixedCosts > 0 ? <p className="weekly-empty">Săptămâna nu s-a încheiat: sunt deja scăzute {ownBusiness ? "costurile fixe" : "CIM-ul și costurile fixe"} pe toată săptămâna ({money(weeklyFixedCosts)} RON). Rezultatul crește cu fiecare zi lucrată.</p> : null}{weekIsTotal ? <p className="weekly-empty">Calculat din totalul săptămânii introdus de tine. <button type="button" className="inline-link" onClick={() => setActivePeriod("week")}>Vezi totalul</button></p> : null}</> : <p className="weekly-empty">Salvează fiecare zi lucrată; {ownBusiness ? "rezultatul se adună pe toată săptămâna luni–duminică." : "soldul pentru plată se actualizează pe toată săptămâna luni–duminică."}</p>}{daysOfWeek.length ? <div className="saved-days">{daysOfWeek.map((day) => <button type="button" key={day.date} className={day.date === date ? "selected" : ""} aria-label={`Deschide ziua de ${shortDate(day.date)}`} onClick={() => { setActivePeriod("day"); setDate(day.date); }}>{shortDate(day.date)} · {day.hoursWorked.toLocaleString("ro-RO")} ore</button>)}</div> : null}</section>
+          <VehicleJournalCard config={config} days={vehicleDays} today={todayInRomania()} />
           <p className="preview-note">{persistenceNote}</p>
         </aside>
         {canCalculate ? <div className={`mobile-result-bar ${result.result < 0 ? "negative" : ""}`}><span>{ownBusiness ? "Rezultat azi, înainte de taxe" : "Rezultat azi"}<strong>{money(result.result)} RON</strong></span><button type="button" onClick={() => document.getElementById("calcul")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Vezi calculul</button></div> : null}

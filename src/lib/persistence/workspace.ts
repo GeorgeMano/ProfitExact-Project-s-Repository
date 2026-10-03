@@ -1,3 +1,4 @@
+import { parseDayServiceFields, parseVehicleServiceConfig } from "@/lib/finance/vehicle-service";
 import type {
   CostPeriod,
   FuelType,
@@ -227,6 +228,7 @@ export function parseOnboardingConfig(value: unknown): OnboardingConfig | null {
   const activity = readEnum(value.activity, activities);
   const delivery = activity === "delivery";
   const withDelivery = activity === "delivery" || activity === "both";
+  const vehicleService = parseVehicleServiceConfig(value.vehicleService);
   const deliveryFleetCommission =
     activity === "both" ? parseFleetCommission(value.deliveryFleetCommission) : null;
   const deliveryPlatforms = Array.isArray(value.deliveryPlatforms)
@@ -287,6 +289,8 @@ export function parseOnboardingConfig(value: unknown): OnboardingConfig | null {
     recurringCosts: ownBusiness
       ? recurringCosts.map((cost) => ({ ...cost, paidToFleet: false }))
       : recurringCosts,
+    // La bicicletă nu se țin kilometri.
+    ...(vehicleService && (vehicleType === "car" || vehicleType === "moto") ? { vehicleService } : {}),
   };
 }
 
@@ -399,6 +403,7 @@ function parseWorkDayInputs(value: unknown): SavedWorkDayInputs | undefined {
     roadTollCost: readNumber(value.roadTollCost),
     serviceCost: readNumber(value.serviceCost),
     otherCost: readNumber(value.otherCost),
+    ...parseDayServiceFields(value),
   };
 }
 

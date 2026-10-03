@@ -161,4 +161,28 @@ describe("istoricul citit din cont", () => {
     expect(week.contribution.netEarnings).toBe(1200);
     expect(week.contribution.amountManagedByFleet).toBe(900);
   });
+
+  it("reface jurnalul vehiculului: tipul, descrierea și kilometrajul intervenției", () => {
+    const withService = rebuildHistory(config, {
+      ...rows,
+      entries: rows.entries.map((entry) => (entry.id === "day-1" ? { ...entry, odometer_km: "188700.00" } : entry)),
+      expenses: [
+        ...rows.expenses,
+        { work_entry_id: "day-1", category: "service", amount: "650.00", description: "ulei și filtre", odometer_km: "188700.00", service_kind: "revizie" },
+      ],
+    });
+    const inputs = withService.savedDays.find((day) => day.date === "2026-09-01")?.inputs;
+    expect(inputs).toMatchObject({ serviceCost: 650, serviceKind: "revizie", serviceNote: "ulei și filtre", odometerKm: 188700 });
+  });
+
+  it("un tip de intervenție necunoscut nu strică ziua", () => {
+    const odd = rebuildHistory(config, {
+      ...rows,
+      expenses: [{ work_entry_id: "day-1", category: "service", amount: "40", description: null, odometer_km: null, service_kind: "ceva" }],
+    });
+    const inputs = odd.savedDays.find((day) => day.date === "2026-09-01")?.inputs;
+    expect(inputs?.serviceCost).toBe(40);
+    expect(inputs?.serviceKind).toBeUndefined();
+    expect(inputs?.odometerKm).toBeUndefined();
+  });
 });

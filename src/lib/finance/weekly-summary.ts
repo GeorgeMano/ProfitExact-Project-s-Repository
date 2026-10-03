@@ -1,3 +1,4 @@
+import type { ServiceKind } from "./vehicle-service";
 import { roundMoney } from "./daily-result";
 import {
   isDeliveryPlatform,
@@ -63,6 +64,11 @@ export interface SavedWorkDayInputs {
   roadTollCost: number;
   serviceCost: number;
   otherCost: number;
+  /** Jurnalul vehiculului: kilometrajul de la bord, opțional (nu la bicicletă). */
+  odometerKm?: number;
+  /** Ce fel de intervenție a fost, când `serviceCost` > 0. */
+  serviceKind?: ServiceKind;
+  serviceNote?: string;
 }
 
 export interface SavedWorkDay {

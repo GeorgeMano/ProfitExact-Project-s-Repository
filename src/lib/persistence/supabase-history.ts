@@ -1,3 +1,4 @@
+import { parseDayServiceFields } from "@/lib/finance/vehicle-service";
 import type { OnboardingConfig } from "@/domain/onboarding";
 import type { SavedManualPeriod } from "@/lib/finance/manual-period";
 import {
@@ -29,6 +30,7 @@ export interface WorkEntryRow {
   worked_hours: number | string | null;
   total_kilometers: number | string | null;
   private_earnings: number | string | null;
+  odometer_km?: number | string | null;
 }
 
 export interface PlatformEarningsRow {
@@ -61,6 +63,9 @@ export interface ExpenseRow {
   work_entry_id: string | null;
   category: string;
   amount: number | string | null;
+  description?: string | null;
+  odometer_km?: number | string | null;
+  service_kind?: string | null;
 }
 
 export interface HistoryRows {
@@ -107,6 +112,7 @@ function inputsFor(
   energy: EnergyRow | undefined,
   expenses: ExpenseRow[],
 ): SavedWorkDayInputs {
+  const service = expenses.find((expense) => expense.category === "service");
   const sum = (category: string) =>
     expenses
       .filter((expense) => expense.category === category)
@@ -122,6 +128,12 @@ function inputsFor(
     roadTollCost: sum("road_toll"),
     serviceCost: sum("service"),
     otherCost: sum("other"),
+    // Jurnalul vehiculului; validat la fel ca datele salvate pe dispozitiv.
+    ...parseDayServiceFields({
+      odometerKm: amount(entry.odometer_km) || amount(service?.odometer_km),
+      serviceKind: service?.service_kind,
+      serviceNote: service?.description,
+    }),
   };
 }
 

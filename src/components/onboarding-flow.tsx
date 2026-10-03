@@ -31,7 +31,9 @@ import {
   type WorkMode,
   type RecurringCostConfig,
   type VehicleOwnership,
+  vehicleShortNames,
 } from "@/domain/onboarding";
+import { serviceIntervalExamples } from "@/lib/finance/vehicle-service";
 import type { FleetCommission } from "@/lib/finance/daily-result";
 import { BrandMark } from "./brand-mark";
 import { DecimalInput } from "./decimal-input";
@@ -75,8 +77,12 @@ interface Draft {
   affiliationType: "percentage" | "fixed";
   affiliationPercent: number;
   affiliationFixed: CostDraft;
-  /** Bicicletă sau scuter: întreținere și reparații. */
-  maintenance: CostDraft;
+  /** Jurnalul vehiculului (numai mașină și scuter): kilometrajul de acum și revizia. */
+  odometerKm: number;
+  lastServiceKm: number;
+  lastServiceDate: string;
+  serviceIntervalKm: number;
+  serviceIntervalMonths: number;
   /** „Ambele”, angajat: flota ia alt comision la livrări decât la ridesharing. */
   deliveryCommissionDiffers: boolean;
   deliveryCommissionType: "percentage" | "fixed";
@@ -135,7 +141,11 @@ const initialDraft: Draft = {
   affiliationType: "percentage",
   affiliationPercent: 0,
   affiliationFixed: { enabled: true, amount: 0, period: "weekly" },
-  maintenance: { enabled: false, amount: 0, period: "monthly" },
+  odometerKm: 0,
+  lastServiceKm: 0,
+  lastServiceDate: "",
+  serviceIntervalKm: 0,
+  serviceIntervalMonths: 0,
   deliveryCommissionDiffers: false,
   deliveryCommissionType: "percentage",
   deliveryCommissionValue: 0,
@@ -332,9 +342,7 @@ function buildConfig(draft: Draft): OnboardingConfig {
   }
   if (draft.vehicleOwnership === "rented") {
     add({ id: "vehicle-rent", category: "vehicle_rent", label: vehicleType === "car" ? "Chirie auto" : "Chirie vehicul", amount: draft.rentWeekly, period: "weekly", paidToFleet: false });
-  } else if (!motorVehicle) {
-    if (draft.maintenance.enabled) add({ id: "maintenance", category: "vehicle_maintenance", label: "Întreținere și reparații", amount: draft.maintenance.amount, period: draft.maintenance.period, paidToFleet: false });
-  } else {
+  } else if (motorVehicle) {
     add({ id: "rca", category: "rca", label: "RCA", amount: draft.rcaAnnual, period: "annual", paidToFleet: false });
     if (draft.casco.enabled) add({ id: "casco", category: "casco", label: "CASCO", amount: draft.casco.amount, period: "annual", paidToFleet: false });
     if (draft.itp.enabled) add({ id: "itp", category: "itp", label: "ITP", amount: draft.itp.amount, period: "validity", validityDays: draft.itp.validityDays, paidToFleet: false });
@@ -342,9 +350,7 @@ function buildConfig(draft: Draft): OnboardingConfig {
     if (vehicleType === "car" && draft.vignette.enabled) add({ id: "vignette", category: "vignette", label: "Rovinietă", amount: draft.vignette.amount, period: "validity", validityDays: draft.vignette.validityDays, paidToFleet: false });
     if (draft.leasing.enabled) add({ id: "leasing", category: "leasing", label: "Rată / leasing", amount: draft.leasing.amount, period: "monthly", paidToFleet: false });
   }
-  if (vehicleType === "moto" && draft.maintenance.enabled) {
-    add({ id: "maintenance", category: "vehicle_maintenance", label: "Întreținere și reparații", amount: draft.maintenance.amount, period: draft.maintenance.period, paidToFleet: false });
-  }
+  // Reviziile și reparațiile nu se știu dinainte: se trec în ziua în care apar.
   add({ id: "phone", category: "phone_internet", label: "Telefon și internet", amount: draft.phoneInternetMonthly, period: "monthly", paidToFleet: false });
 
   // Fără combustibil (bicicletă, trotinetă electrică): consum zero.
@@ -389,6 +395,19 @@ function buildConfig(draft: Draft): OnboardingConfig {
     weeklyCimCost: !ownBusiness && draft.paysCim ? draft.weeklyCimCost : 0,
     effectiveFrom: draft.effectiveFrom,
     recurringCosts,
+    // Kilometrajul pornește jurnalul; fără el nu există alertă de revizie.
+    ...(motorVehicle && draft.odometerKm > 0
+      ? {
+          vehicleService: {
+            odometerKm: draft.odometerKm,
+            odometerDate: draft.effectiveFrom,
+            lastServiceKm: draft.lastServiceKm > 0 ? draft.lastServiceKm : null,
+            lastServiceDate: /^\d{4}-\d{2}-\d{2}$/.test(draft.lastServiceDate) ? draft.lastServiceDate : null,
+            intervalKm: draft.serviceIntervalKm > 0 ? draft.serviceIntervalKm : null,
+            intervalMonths: draft.serviceIntervalMonths > 0 ? Math.min(120, draft.serviceIntervalMonths) : null,
+          },
+        }
+      : {}),
   };
 }
 
@@ -514,7 +533,7 @@ export function OnboardingFlow({
               <div className="inline-question"><strong>Vehiculul este al tău sau închiriat?</strong><div className="segmented"><button type="button" className={draft.vehicleOwnership === "owned" ? "selected" : ""} aria-pressed={draft.vehicleOwnership === "owned"} onClick={() => set("vehicleOwnership", "owned")}>Al meu</button><button type="button" className={draft.vehicleOwnership === "rented" ? "selected" : ""} aria-pressed={draft.vehicleOwnership === "rented"} onClick={() => set("vehicleOwnership", "rented")}>Închiriat</button></div></div>
             </Step> : <Step title="Mașina este personală sau închiriată?" description="Costurile afișate în pasul următor depind de această alegere.">
               <div className="choice-grid">
-                <Choice value="owned" selected={draft.vehicleOwnership === "owned"} label="Mașină personală" detail="RCA, CASCO, ITP, rovinietă, leasing și jurnale" onSelect={(value) => set("vehicleOwnership", value)} />
+                <Choice value="owned" selected={draft.vehicleOwnership === "owned"} label="Mașină personală" detail="RCA, CASCO, ITP, rovinietă, leasing și cartea de service" onSelect={(value) => set("vehicleOwnership", value)} />
                 <Choice value="rented" selected={draft.vehicleOwnership === "rented"} label="Mașină închiriată" detail="Chirie săptămânală, combustibil și spălări" onSelect={(value) => set("vehicleOwnership", value)} />
               </div>
             </Step>
@@ -672,14 +691,13 @@ function VehicleCostsStep({ draft, set }: { draft: Draft; set: DraftSetter }) {
   const isHybrid = car && (draft.fuelType === "hybrid_gasoline" || draft.fuelType === "hybrid_diesel");
   const isPhev = isHybrid && draft.hybridType === "phev";
   const updateCost = (
-    key: "casco" | "itp" | "vignette" | "leasing" | "maintenance",
+    key: "casco" | "itp" | "vignette" | "leasing",
     patch: Partial<CostDraft>,
   ) => set(key, { ...draft[key], ...patch });
   const unit = draft.fuelType === "electric" ? "kWh/100 km" : "litri/100 km";
   // Scuterele și motocicletele merg pe benzină sau electric.
   const fuelOptions: FuelType[] = moto ? ["gasoline", "electric"] : (Object.keys(fuelLabels) as FuelType[]);
   const vehicleName = car ? "Mașină" : moto ? "Scuter / motocicletă" : vehicleTypeLabels[vehicleType];
-  const maintenance = <ConditionalCost title="Plătești întreținere și reparații regulate?" enabled={draft.maintenance.enabled} onToggle={(enabled) => updateCost("maintenance", { enabled })}><NumberInput label="Cost" value={draft.maintenance.amount} onChange={(amount) => updateCost("maintenance", { amount })} /><PeriodSelect value={draft.maintenance.period} onChange={(period) => updateCost("maintenance", { period })} /></ConditionalCost>;
 
   return (
     <Step title={car ? "Configurează mașina și costurile recurente" : "Configurează vehiculul și costurile recurente"} description="ProfitExact le va împărți automat pe zi, săptămână și lună. Valorile zero nu sunt activate.">
@@ -702,16 +720,42 @@ function VehicleCostsStep({ draft, set }: { draft: Draft; set: DraftSetter }) {
           <ValidityCost title="Adaugi costul ITP?" cost={draft.itp} onChange={(patch) => updateCost("itp", patch)} />
           {car ? <ValidityCost title="Adaugi rovinieta?" cost={draft.vignette} onChange={(patch) => updateCost("vignette", patch)} /> : null}
           <ConditionalCost title="Ai rată, finanțare sau leasing?" enabled={draft.leasing.enabled} onToggle={(enabled) => updateCost("leasing", { enabled })}><NumberInput label="Rată lunară" value={draft.leasing.amount} onChange={(amount) => updateCost("leasing", { amount })} /></ConditionalCost>
-          {moto ? maintenance : null}
         </div>
       ) : (
         <div className="cost-options">
           <h3>{vehicleTypeLabels[vehicleType]} personală</h3>
-          {maintenance}
+          <p className="field-note">Reviziile și reparațiile nu se știu dinainte: le treci în ziua în care apar, iar aplicația le păstrează la „Reparațiile bicicletei”.</p>
         </div>
       )}
+      {motorVehicle ? <ServiceSetup draft={draft} set={set} vehicleType={vehicleType} /> : null}
       <div className="shared-cost"><NumberInput label="Telefon și internet / lună" value={draft.phoneInternetMonthly} onChange={(value) => set("phoneInternetMonthly", value)} /></div>
     </Step>
+  );
+}
+
+/**
+ * Pornirea jurnalului: kilometrajul de acum și, opțional, revizia.
+ * Reviziile și reparațiile nu se cer în bani aici: nu se știu dinainte.
+ */
+function ServiceSetup({ draft, set, vehicleType }: { draft: Draft; set: DraftSetter; vehicleType: VehicleType }) {
+  const examples = serviceIntervalExamples[vehicleType];
+  const name = vehicleShortNames[vehicleType];
+  return (
+    <div className="cost-options service-setup">
+      <h3>Kilometraj și revizie</h3>
+      <p className="field-note full">
+        Pentru cartea de service a {vehicleType === "car" ? "mașinii" : "scuterului"}: aplicația ține minte reviziile și reparațiile și te anunță cu roșu când se apropie revizia.
+        {draft.vehicleOwnership === "rented" ? " Chiar dacă revizia o face firma de închiriere, alerta te ajută să le spui la timp." : ""} Toate sunt opționale.
+      </p>
+      <div className="onboarding-grid">
+        <NumberInput label={`Kilometrajul ${name === "mașină" ? "mașinii" : "scuterului"} acum`} value={draft.odometerKm} onChange={(value) => set("odometerKm", Math.round(value))} suffix="km" placeholder={vehicleType === "car" ? "ex. 187.400" : "ex. 23.500"} />
+        <NumberInput label="Ultima revizie, la kilometrajul" value={draft.lastServiceKm} onChange={(value) => set("lastServiceKm", Math.round(value))} suffix="km" placeholder={vehicleType === "car" ? "ex. 180.000" : "ex. 20.000"} />
+        <label className="onboarding-field"><span>Data ultimei revizii</span><input type="date" value={draft.lastServiceDate} max={draft.effectiveFrom} onChange={(event) => set("lastServiceDate", event.target.value)} /></label>
+        <NumberInput label="Revizie la fiecare" value={draft.serviceIntervalKm} onChange={(value) => set("serviceIntervalKm", Math.round(value))} suffix="km" placeholder={examples.km} />
+        <NumberInput label="Sau la fiecare" value={draft.serviceIntervalMonths} onChange={(value) => set("serviceIntervalMonths", Math.round(value))} suffix="luni" placeholder={examples.months} />
+      </div>
+      {draft.odometerKm <= 0 && (draft.serviceIntervalKm > 0 || draft.lastServiceKm > 0) ? <p className="field-note full">Fără kilometrajul de acum nu putem calcula cât mai ai până la revizie.</p> : null}
+    </div>
   );
 }
 
@@ -737,7 +781,7 @@ function Summary({ config }: { config: OnboardingConfig }) {
     ? `${vehicleTypeLabels[config.vehicleType]} · ${config.vehicleOwnership === "owned" ? "al meu" : "închiriat"}`
     : config.vehicleOwnership === "owned" ? "Mașină personală" : "Mașină închiriată";
   const commission = config.fleetCommission.type === "fixed" ? `${config.fleetCommission.value} RON` : `${config.fleetCommission.value}% din ${config.fleetCommission.base === "gross" ? "brut" : "net"}`;
-  return <Step title="Verifică înainte de confirmare" description="Aceste date rămân în profil și se folosesc automat pentru zilele și perioadele următoare."><dl className="summary-list"><div><dt>Activitate</dt><dd>{activityLabels[config.activity]} · {workModeLabel(config)}</dd></div>{config.legalForm ? <div><dt>Impozitare</dt><dd>{config.taxRegime ? taxRegimeLabels[config.taxRegime] : "Nu știu încă"}</dd></div> : null}<div><dt>{config.activity === "delivery" ? "Aplicații" : "Platformă"}</dt><dd>{configPlatformsLabel(config)}</dd></div><div><dt>Oraș</dt><dd>{config.cityName}</dd></div><div><dt>Vehicul</dt><dd>{vehicle}</dd></div>{usesFuel(config) ? <div><dt>Propulsie</dt><dd>{fuelLabels[config.fuelType]}{config.hybridType ? ` · ${config.hybridType.toUpperCase()}` : ""}</dd></div> : null}{affiliation ? <div><dt>Comision afiliere</dt><dd>{affiliationCommission?.value}% din încasări{config.activity === "both" ? " de livrări" : ""}</dd></div> : null}{ownBusiness ? null : <><div><dt>{deliveryCommission ? "Comision flotă la ridesharing" : "Comision flotă"}</dt><dd>{commission}</dd></div>{deliveryCommission ? <div><dt>Comision flotă la livrări</dt><dd>{deliveryCommission}</dd></div> : null}<div><dt>CIM săptămânal</dt><dd>{config.weeklyCimCost.toLocaleString("ro-RO")} RON</dd></div></>}<div><dt>Costuri recurente</dt><dd>{config.recurringCosts.length ? `${config.recurringCosts.length} configurate` : "Niciun cost opțional"}</dd></div></dl><div className="summary-costs">{config.recurringCosts.map((cost) => <span key={cost.id}>{cost.label}: {cost.amount.toLocaleString("ro-RO")} RON {cost.oneTime ? "o singură dată" : cost.period === "validity" ? `pentru ${cost.validityDays ?? 0} zile` : `/ ${periodLabel(cost.period)}`}</span>)}</div></Step>;
+  return <Step title="Verifică înainte de confirmare" description="Aceste date rămân în profil și se folosesc automat pentru zilele și perioadele următoare."><dl className="summary-list"><div><dt>Activitate</dt><dd>{activityLabels[config.activity]} · {workModeLabel(config)}</dd></div>{config.legalForm ? <div><dt>Impozitare</dt><dd>{config.taxRegime ? taxRegimeLabels[config.taxRegime] : "Nu știu încă"}</dd></div> : null}<div><dt>{config.activity === "delivery" ? "Aplicații" : "Platformă"}</dt><dd>{configPlatformsLabel(config)}</dd></div><div><dt>Oraș</dt><dd>{config.cityName}</dd></div><div><dt>Vehicul</dt><dd>{vehicle}</dd></div>{config.vehicleService ? <div><dt>Kilometraj</dt><dd>{config.vehicleService.odometerKm.toLocaleString("ro-RO")} km{config.vehicleService.intervalKm ? ` · revizie la ${config.vehicleService.intervalKm.toLocaleString("ro-RO")} km` : ""}{config.vehicleService.intervalMonths ? ` sau ${config.vehicleService.intervalMonths} luni` : ""}</dd></div> : null}{usesFuel(config) ? <div><dt>Propulsie</dt><dd>{fuelLabels[config.fuelType]}{config.hybridType ? ` · ${config.hybridType.toUpperCase()}` : ""}</dd></div> : null}{affiliation ? <div><dt>Comision afiliere</dt><dd>{affiliationCommission?.value}% din încasări{config.activity === "both" ? " de livrări" : ""}</dd></div> : null}{ownBusiness ? null : <><div><dt>{deliveryCommission ? "Comision flotă la ridesharing" : "Comision flotă"}</dt><dd>{commission}</dd></div>{deliveryCommission ? <div><dt>Comision flotă la livrări</dt><dd>{deliveryCommission}</dd></div> : null}<div><dt>CIM săptămânal</dt><dd>{config.weeklyCimCost.toLocaleString("ro-RO")} RON</dd></div></>}<div><dt>Costuri recurente</dt><dd>{config.recurringCosts.length ? `${config.recurringCosts.length} configurate` : "Niciun cost opțional"}</dd></div></dl><div className="summary-costs">{config.recurringCosts.map((cost) => <span key={cost.id}>{cost.label}: {cost.amount.toLocaleString("ro-RO")} RON {cost.oneTime ? "o singură dată" : cost.period === "validity" ? `pentru ${cost.validityDays ?? 0} zile` : `/ ${periodLabel(cost.period)}`}</span>)}</div></Step>;
 }
 
 function periodLabel(period: CostPeriod) {

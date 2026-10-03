@@ -1,5 +1,6 @@
 import type { FleetCommission } from "@/lib/finance/daily-result";
 import type { DeliveryPlatform, KilometerEntryMode, PlatformKey } from "@/lib/finance/platform-entry";
+import type { VehicleServiceConfig } from "@/lib/finance/vehicle-service";
 
 export type { DeliveryPlatform, KilometerEntryMode };
 
@@ -114,6 +115,11 @@ export interface OnboardingConfig {
   weeklyCimCost: number;
   effectiveFrom: string;
   recurringCosts: RecurringCostConfig[];
+  /**
+   * Kilometrajul și intervalul de revizie, pentru jurnalul vehiculului.
+   * Numai la mașină și scuter: la bicicletă nu se cer kilometri.
+   */
+  vehicleService?: VehicleServiceConfig;
 }
 
 export const fuelLabels: Record<FuelType, string> = {
@@ -180,6 +186,19 @@ export const vehicleTypeLabels: Record<VehicleType, string> = {
   e_bike: "Bicicletă / trotinetă electrică",
   bicycle: "Bicicletă",
 };
+
+/** Numele scurt al vehiculului, pentru întrebări: „intervenții la mașină”. */
+export const vehicleShortNames: Record<VehicleType, string> = {
+  car: "mașină",
+  moto: "scuter",
+  e_bike: "bicicleta electrică",
+  bicycle: "bicicletă",
+};
+
+/** Kilometrajul și alertele de revizie au sens doar la mașină și scuter. */
+export function tracksOdometer(config: Pick<OnboardingConfig, "vehicleType">) {
+  return config.vehicleType === "car" || config.vehicleType === "moto";
+}
 
 /** Bicicleta și trotineta electrică nu au combustibil de calculat. */
 export function usesFuel(config: Pick<OnboardingConfig, "vehicleType">) {

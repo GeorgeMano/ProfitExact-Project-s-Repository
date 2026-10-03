@@ -3,7 +3,7 @@ import type { OnboardingConfig, PlatformChoice } from "@/domain/onboarding";
 import type { SavedManualPeriod } from "@/lib/finance/manual-period";
 import { platformsForConfig } from "@/lib/finance/platform-entry";
 import { daysOfActivity, periodsOfActivity } from "@/lib/finance/activity";
-import type { SavedWorkDay } from "@/lib/finance/weekly-summary";
+import type { SavedWorkDay, SavedWorkDayInputs } from "@/lib/finance/weekly-summary";
 import {
   rebuildHistory,
   type EnergyRow,
@@ -81,6 +81,7 @@ function dayEntryRow(
     worked_days: 1,
     worked_hours: Math.max(0, day.hoursWorked),
     total_kilometers: Math.max(0, day.kilometers),
+    odometer_km: day.inputs?.odometerKm && day.inputs.odometerKm > 0 ? day.inputs.odometerKm : null,
     private_earnings: Math.max(0, day.privateEarnings),
     private_kilometers: 0,
     reported_net_earnings: Math.max(0, day.netEarnings),
@@ -203,6 +204,12 @@ export function createSupabaseWorkspaceRepository(
       hybrid_type: config.hybridType,
       primary_fuel: config.primaryFuel,
       consumption_per_100: Math.max(0, config.consumptionPer100Km),
+      odometer_km: config.vehicleService?.odometerKm ?? null,
+      odometer_date: config.vehicleService?.odometerDate ?? null,
+      last_service_km: config.vehicleService?.lastServiceKm ?? null,
+      last_service_date: config.vehicleService?.lastServiceDate ?? null,
+      service_interval_km: config.vehicleService?.intervalKm ?? null,
+      service_interval_months: config.vehicleService?.intervalMonths ?? null,
       effective_from: config.effectiveFrom,
       effective_to: null,
       updated_at: new Date().toISOString(),
@@ -443,6 +450,15 @@ export function createSupabaseWorkspaceRepository(
           expense_date: source.date,
           period_type: source.periodType,
           amount: Math.max(0, source.inputs[field]),
+          // Jurnalul vehiculului: tipul, descrierea și kilometrajul intervenției.
+          ...(category === "service"
+            ? {
+                // Totalurile de săptămână sau lună au doar suma, fără detalii.
+                service_kind: (source.inputs as Partial<SavedWorkDayInputs>).serviceKind ?? null,
+                description: (source.inputs as Partial<SavedWorkDayInputs>).serviceNote ?? null,
+                odometer_km: (source.inputs as Partial<SavedWorkDayInputs>).odometerKm ?? null,
+              }
+            : {}),
         }))
         .filter((row) => row.amount > 0),
     );
@@ -568,7 +584,7 @@ export function createSupabaseWorkspaceRepository(
     const { data: entries, error } = await client
       .from("work_entries")
       .select(
-        "id, period_type, period_start, period_end, worked_days, worked_hours, total_kilometers, private_earnings",
+        "id, period_type, period_start, period_end, worked_days, worked_hours, total_kilometers, private_earnings, odometer_km",
       )
       .eq("context_id", contextId)
       .order("period_start", { ascending: true });
@@ -595,7 +611,7 @@ export function createSupabaseWorkspaceRepository(
         .in("work_entry_id", ids),
       client
         .from("expenses")
-        .select("work_entry_id, category, amount")
+        .select("work_entry_id, category, amount, description, odometer_km, service_kind")
         .in("work_entry_id", ids),
     ]);
 
@@ -638,7 +654,7 @@ export function createSupabaseWorkspaceRepository(
         client
           .from("vehicles")
           .select(
-            "ownership_type, vehicle_type, fuel_type, hybrid_type, primary_fuel, consumption_per_100, effective_from",
+            "ownership_type, vehicle_type, fuel_type, hybrid_type, primary_fuel, consumption_per_100, effective_from, odometer_km, odometer_date, last_service_km, last_service_date, service_interval_km, service_interval_months",
           )
           .eq("context_id", context.id)
           .is("effective_to", null)
@@ -699,6 +715,15 @@ export function createSupabaseWorkspaceRepository(
         hybridType: vehicleRow.hybrid_type,
         primaryFuel: vehicleRow.primary_fuel,
         consumptionPer100Km: Number(vehicleRow.consumption_per_100),
+        // Se validează la citirea configurației; fără kilometraj nu există jurnal.
+        vehicleService: {
+          odometerKm: Number(vehicleRow.odometer_km ?? 0),
+          odometerDate: vehicleRow.odometer_date,
+          lastServiceKm: Number(vehicleRow.last_service_km ?? 0),
+          lastServiceDate: vehicleRow.last_service_date,
+          intervalKm: Number(vehicleRow.service_interval_km ?? 0),
+          intervalMonths: Number(vehicleRow.service_interval_months ?? 0),
+        },
         fleetCommission:
           fleetRow.commission_type === "percentage"
             ? {
