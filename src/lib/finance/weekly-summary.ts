@@ -1,8 +1,9 @@
 import { roundMoney } from "./daily-result";
-import type {
-  PlatformEntryInput,
-  PlatformEntryResult,
-  PlatformKey,
+import {
+  isDeliveryPlatform,
+  type PlatformEntryInput,
+  type PlatformEntryResult,
+  type PlatformKey,
 } from "./platform-entry";
 
 export type SummaryPeriod = "week" | "month";
@@ -26,6 +27,10 @@ export interface SavedPlatformEntry {
   platformCosts: number;
   applicationCommission: number;
   cashTips: number;
+  /** Livrări finalizate, la aplicațiile de livrări. */
+  deliveries?: number;
+  cancelledDeliveries?: number;
+  hoursOnline?: number;
   /** Totalurile calculate din rânduri, ca în aplicație. */
   appRevenue: number;
   cashRevenue: number;
@@ -255,6 +260,9 @@ export function toSavedPlatformEntry(
     platformCosts: item.platformCosts,
     applicationCommission: item.applicationCommission,
     cashTips: amount(entry.cashTips),
+    ...(entry.deliveries ? { deliveries: Math.max(0, Math.round(entry.deliveries)) } : {}),
+    ...(entry.cancelledDeliveries ? { cancelledDeliveries: Math.max(0, Math.round(entry.cancelledDeliveries)) } : {}),
+    ...(entry.hoursOnline ? { hoursOnline: roundMoney(Math.max(0, entry.hoursOnline)) } : {}),
     appRevenue: item.appRevenue,
     cashRevenue: item.cashRevenue,
     netEarnings: item.netEarnings,
@@ -297,7 +305,14 @@ export function upsertSavedWorkDay(
   days: SavedWorkDay[],
   nextDay: SavedWorkDay,
 ) {
-  return [...days.filter((day) => day.date !== nextDay.date), nextDay].sort(
+  // O zi de ridesharing și una de delivery pot avea aceeași dată: se înlocuiește
+  // numai ziua aceleiași activități.
+  const activityOf = (day: SavedWorkDay) =>
+    day.platforms?.some((entry) => isDeliveryPlatform(entry.platform)) ? "delivery" : "ridesharing";
+  return [
+    ...days.filter((day) => day.date !== nextDay.date || activityOf(day) !== activityOf(nextDay)),
+    nextDay,
+  ].sort(
     (left, right) => left.date.localeCompare(right.date),
   );
 }

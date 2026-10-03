@@ -1,10 +1,20 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import { DecimalInput } from "./decimal-input";
 import {
+  isDeliveryPlatform,
+  type DeliveryPlatform,
   platformEntryTotals,
   type PlatformEntryInput,
 } from "@/lib/finance/platform-entry";
+import {
+  fillFromDelivery,
+  planDeliveryCapture,
+  type DeliveryField,
+  type DeliveryReading,
+} from "@/lib/ocr/delivery-screenshot";
+import { getPeriodBounds } from "@/lib/finance/weekly-summary";
 import {
   entryFromReading,
   type ScreenshotField,
@@ -65,22 +75,31 @@ function AmountRow({
       <span className="earnings-leader" aria-hidden="true" />
       <span className={`earnings-input ${required && value === null ? "missing" : ""}`}>
         {sign ? <em aria-hidden="true">{sign}</em> : null}
-        <input
-          type="number"
-          inputMode="decimal"
-          min="0"
-          step="0.01"
+        <DecimalInput
           aria-label={ariaLabel}
           required={required}
           placeholder={required ? "din aplicație" : "0,00"}
-          value={value === null || (!required && value === 0) ? "" : value}
-          onChange={(event) =>
-            onChange(event.target.value === "" ? null : Number(event.target.value))
-          }
+          value={value}
+          emptyWhenZero={!required}
+          onChange={onChange}
         />
         <small>{suffix}</small>
       </span>
     </div>
+  );
+}
+
+/**
+ * Textul exact scos de OCR din imagine, cu tot cu greșelile lui. Arată că
+ * rubricile vin din captura încărcată, nu din altă parte.
+ */
+function RawOcrText({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  return (
+    <details className="ocr-raw">
+      <summary>Vezi textul citit din captură</summary>
+      <pre>{text.trim()}</pre>
+    </details>
   );
 }
 
@@ -143,7 +162,9 @@ function ScreenshotImport({
   onCancelAsk,
   onFile,
   onUseForWeek,
+  rawText,
 }: {
+  rawText?: string | null;
   platformLabel: string;
   state: ImportState;
   askPeriod: boolean;
@@ -225,11 +246,315 @@ function ScreenshotImport({
           ) : null}
         </div>
       ) : null}
+      {state.status === "done" || state.status === "error" ? <RawOcrText text={rawText} /> : null}
     </div>
   );
 }
 
-export function PlatformEarningsFields({
+/** O captură de delivery citită în alt formular și adusă aici, deja aplicată. */
+export interface InitialDelivery {
+  reading: DeliveryReading;
+  notes: string[];
+}
+
+type EarningsFieldsProps = Parameters<typeof RidesharingEarningsFields>[0] & {
+  initialDelivery?: InitialDelivery | null;
+  /** Captura de delivery este pentru altă perioadă decât formularul deschis. */
+  onDeliveryOtherPeriod?: (period: CapturePeriod, anchorDate: string, reading: DeliveryReading, notes: string[]) => void;
+};
+
+/** Formularul potrivit aplicației: Bolt/Uber sau o aplicație de livrări. */
+export function PlatformEarningsFields(props: EarningsFieldsProps) {
+  return isDeliveryPlatform(props.entry.platform) ? (
+    <DeliveryEarningsFields {...props} />
+  ) : (
+    <RidesharingEarningsFields {...props} />
+  );
+}
+
+/**
+ * Încasările dintr-o aplicație de livrări, așezate ca ecranul aplicației:
+ * aceleași rubrici, în aceeași ordine (regula lui George). Aplicațiile de
+ * livrări nu iau comision de la curier.
+ *
+ *   Wolt („Statisticile tale”): Livrări finalizate → Distanța parcursă →
+ *     Câștiguri (estimare) → Câștiguri fără bacșiș → Bacșiș.
+ *   Bolt Food: „Performanță” (Livrări finalizate → Distanță parcursă), apoi
+ *     totalul din „Toate livrările”.
+ *   Glovo: provizoriu, până vedem ecranul aplicației.
+ */
+function DeliveryEarningsFields({
+  entry,
+  platformLabel,
+  showKilometers,
+  kilometersEstimated = false,
+  formPeriod,
+  onChange,
+  onReplace,
+  ownBusiness = false,
+  initialDelivery = null,
+  onDeliveryOtherPeriod,
+}: EarningsFieldsProps) {
+  const totals = platformEntryTotals(entry);
+  const [importState, setImportState] = useState<DeliveryImportState>(() =>
+    initialDelivery
+      ? { status: "done", problems: initialDelivery.reading.problems, notes: [...initialDelivery.notes, ...initialDelivery.reading.notes] }
+      : { status: "idle" },
+  );
+  const [flagged, setFlagged] = useState<ReadonlySet<DeliveryField>>(
+    () => new Set(initialDelivery?.reading.needsCheck ?? []),
+  );
+  const [rawText, setRawText] = useState<string | null>(initialDelivery?.reading.rawText ?? null);
+  const isFlagged = (field: DeliveryField) => flagged.has(field);
+  const amount =
+    (key: "appRidePayments" | "appTips" | "cashTips" | "kilometers" | "deliveries" | "cancelledDeliveries" | "hoursOnline") =>
+    (value: number | null) => {
+      if (key === "appRidePayments" || key === "appTips" || key === "kilometers" || key === "hoursOnline") {
+        setFlagged((current) => {
+          if (!current.has(key)) return current;
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+      onChange(key, value ?? 0);
+    };
+  // Wolt și Bolt Food măsoară distanța ele însele: nu e o estimare.
+  const kmLabel = (base: string) =>
+    kilometersEstimated && entry.platform === "glovo" ? `${base} (estimativ)` : base;
+
+  const importScreenshot = async (file: File, chosen: CapturePeriod) => {
+    setImportState({ status: "working", stage: "loading", percent: 0 });
+    try {
+      const { readDeliveryScreenshot } = await import("@/lib/ocr/read-screenshot");
+      const reading = await readDeliveryScreenshot(file, (stage, percent) =>
+        setImportState({ status: "working", stage, percent }),
+      );
+      setRawText(reading.rawText ?? null);
+      const form = formPeriod ?? { type: "day" as const, startDate: todayIso(), endDate: todayIso() };
+      const plan = planDeliveryCapture(reading, chosen, form, entry.platform as DeliveryPlatform, platformLabel);
+      if (plan.type === "error") {
+        setFlagged(new Set());
+        setImportState({ status: "error", message: plan.message });
+        return;
+      }
+      const targetStart = plan.period === "day" ? plan.anchorDate : getPeriodBounds(plan.anchorDate, plan.period).startDate;
+      if ((plan.period !== form.type || targetStart !== form.startDate) && onDeliveryOtherPeriod) {
+        // Ca la ridesharing: se deschide perioada din captură, cu rubricile completate.
+        setImportState({ status: "idle" });
+        onDeliveryOtherPeriod(plan.period, plan.anchorDate, reading, plan.notes);
+        return;
+      }
+      const filled = fillFromDelivery(entry, reading, form, showKilometers);
+      onReplace(filled.entry);
+      setFlagged(new Set(reading.needsCheck));
+      setImportState({ status: "done", problems: reading.problems, notes: [...plan.notes, ...filled.notes, ...reading.notes] });
+    } catch {
+      setImportState({
+        status: "error",
+        message: "Captura nu a putut fi citită. Verifică conexiunea la internet la prima folosire, apoi încearcă din nou.",
+      });
+    }
+  };
+
+  const deliveriesRow = (
+    <AmountRow sign="" suffix="" label="Livrări finalizate" ariaLabel="Livrări finalizate" value={entry.deliveries ?? 0} onChange={amount("deliveries")} />
+  );
+  const kilometersRow = showKilometers ? (
+    <AmountRow sign="" suffix="km" label={kmLabel(entry.platform === "wolt" ? "Distanța parcursă" : "Distanță parcursă")} note={entry.platform === "wolt" ? "În timpul comenzii și în afara acesteia" : undefined} ariaLabel="Kilometri parcurși" value={entry.kilometers} onChange={amount("kilometers")} flagged={isFlagged("kilometers")} />
+  ) : null;
+  const flotaPill = (
+    <div className="earnings-split">
+      <div className="earnings-cash-pill card">
+        <span>{ownBusiness ? "Bani în contul firmei" : "Bani prin flotă"}<small>{ownBusiness ? "plătiți de aplicație" : "aplicația plătește flota, flota te plătește pe tine"}</small></span>
+        <strong>+{money(totals.netEarnings)} RON</strong>
+      </div>
+    </div>
+  );
+  const outside = (
+    <section className="earnings-group earnings-outside" aria-label="În afara aplicației">
+      <GroupHead title="În afara aplicației" />
+      <div className="earnings-rows">
+        <AmountRow label="Bacșiș numerar" ariaLabel="Bacșiș numerar" value={entry.cashTips} onChange={amount("cashTips")} />
+      </div>
+    </section>
+  );
+  const importBox = (
+    <DeliveryScreenshotImport platform={entry.platform} platformLabel={platformLabel} state={importState} onAsk={() => setImportState({ status: "choosing" })} onCancelAsk={() => setImportState({ status: "idle" })} onFile={(file, period) => void importScreenshot(file, period)} rawText={rawText} />
+  );
+
+  if (entry.platform === "wolt") {
+    return (
+      <div className="earnings-sheet">
+        {importBox}
+        <section className="earnings-group" aria-label="Statisticile tale">
+          <GroupHead title="Statisticile tale" />
+          <div className="earnings-rows">
+            {deliveriesRow}
+            {kilometersRow}
+          </div>
+        </section>
+        <div className="earnings-total">
+          <span>Câștiguri (estimare)</span>
+          <strong>{money(totals.netEarnings)} RON</strong>
+        </div>
+        <div className="earnings-group earnings-flat">
+          <AmountRow label="Câștiguri fără bacșiș" ariaLabel="Câștiguri fără bacșiș" value={entry.appRidePayments} onChange={amount("appRidePayments")} flagged={isFlagged("appRidePayments")} />
+          <AmountRow label="Bacșiș" ariaLabel="Bacșiș în aplicație" value={entry.appTips} onChange={amount("appTips")} flagged={isFlagged("appTips")} />
+        </div>
+        {flotaPill}
+        {outside}
+      </div>
+    );
+  }
+
+  if (entry.platform === "bolt_food") {
+    return (
+      <div className="earnings-sheet">
+        {importBox}
+        <section className="earnings-group" aria-label="Performanță">
+          <GroupHead title="Performanță" />
+          <div className="earnings-rows">
+            {deliveriesRow}
+            {kilometersRow}
+          </div>
+        </section>
+        <section className="earnings-group" aria-label="Toate livrările">
+          <GroupHead title="Toate livrările" />
+          <div className="earnings-rows">
+            <AmountRow label="Câștiguri" note="Totalul din „Toate livrările”, cu tot cu bacșiș" ariaLabel="Câștig din livrări" value={entry.appRidePayments} onChange={amount("appRidePayments")} flagged={isFlagged("appRidePayments")} />
+          </div>
+        </section>
+        {flotaPill}
+        {outside}
+      </div>
+    );
+  }
+
+  // Glovo — ecranul „Payments”: venitul total, media pe oră, orele online,
+  // apoi livrările finalizate și anulate. Distanța nu apare acolo.
+  const hoursOnline = entry.hoursOnline ?? 0;
+  return (
+    <div className="earnings-sheet">
+      {importBox}
+      <section className="earnings-group" aria-label="Payments">
+        <GroupHead title="Payments" />
+        <div className="earnings-rows">
+          <AmountRow label="Venit total" note="Total income" ariaLabel="Venit total" value={entry.appRidePayments} onChange={amount("appRidePayments")} flagged={isFlagged("appRidePayments")} />
+          <div className="earnings-row readonly-row">
+            <span className="earnings-label">Medie pe oră<small className="earnings-note">Average per hour, calculată</small></span>
+            <span className="earnings-leader" aria-hidden="true" />
+            <strong className="earnings-computed">{hoursOnline > 0 ? `${money(entry.appRidePayments / hoursOnline)} RON` : "—"}</strong>
+          </div>
+          <AmountRow sign="" suffix="ore" label="Ore online" note="Hours online" ariaLabel="Ore online" value={hoursOnline} onChange={amount("hoursOnline")} flagged={isFlagged("hoursOnline")} />
+          <AmountRow sign="" suffix="" label="Livrări finalizate" note="Completed" ariaLabel="Livrări finalizate" value={entry.deliveries ?? 0} onChange={amount("deliveries")} />
+          <AmountRow sign="" suffix="" label="Livrări anulate" note="Cancelled" ariaLabel="Livrări anulate" value={entry.cancelledDeliveries ?? 0} onChange={amount("cancelledDeliveries")} />
+        </div>
+      </section>
+      {kilometersRow ? <div className="earnings-group earnings-flat">{kilometersRow}</div> : null}
+      {flotaPill}
+      {outside}
+    </div>
+  );
+}
+
+type DeliveryImportState =
+  | { status: "idle" }
+  | { status: "choosing" }
+  | { status: "working"; stage: "loading" | "reading"; percent: number }
+  | { status: "done"; problems: string[]; notes: string[] }
+  | { status: "error"; message: string };
+
+function todayIso() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Bucharest", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+function DeliveryScreenshotImport({
+  platform,
+  platformLabel,
+  state,
+  onAsk,
+  onCancelAsk,
+  onFile,
+  rawText,
+}: {
+  rawText?: string | null;
+  platform: PlatformEntryInput["platform"];
+  platformLabel: string;
+  state: DeliveryImportState;
+  onAsk: () => void;
+  onCancelAsk: () => void;
+  onFile: (file: File, period: CapturePeriod) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const periodRef = useRef<CapturePeriod>("day");
+  const working = state.status === "working";
+  const openPicker = (period: CapturePeriod) => {
+    periodRef.current = period;
+    inputRef.current?.click();
+  };
+  const screens = platform === "wolt" ? "„Statisticile tale”" : platform === "glovo" ? "„Payments”" : "„Toate livrările” sau „Performanță”";
+
+  return (
+    <div className={`screenshot-import ${state.status}`}>
+      <div className="screenshot-import-head">
+        <div>
+          <strong>Completează din captură</strong>
+          <span>Încarcă {screens} din {platformLabel}. Imaginea rămâne pe telefonul tău.</span>
+        </div>
+        <button type="button" className="screenshot-import-button" onClick={onAsk} disabled={working}>
+          {working ? "Se citește..." : "Încarcă captura"}
+        </button>
+        <input
+          ref={inputRef}
+          className="visually-hidden"
+          type="file"
+          accept="image/*"
+          aria-label={`Captură ${platformLabel}`}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) onFile(file, periodRef.current);
+          }}
+        />
+      </div>
+      {state.status === "choosing" ? (
+        <div className="capture-period-choice" role="group" aria-label="Pentru ce perioadă este captura?">
+          <p>Ce dorești să calculezi? Pentru ce perioadă este captura?</p>
+          <div>
+            {PERIOD_CHOICES.map((choice) => (
+              <button type="button" key={choice.key} onClick={() => openPicker(choice.key)}>{choice.label}</button>
+            ))}
+            <button type="button" className="capture-cancel" onClick={onCancelAsk}>Renunță</button>
+          </div>
+        </div>
+      ) : null}
+      {state.status === "working" ? (
+        <p className="screenshot-import-status" role="status">
+          {state.stage === "loading" ? "Pregătesc cititorul (doar prima dată durează câteva secunde)..." : `Citesc cifrele din captură... ${state.percent}%`}
+        </p>
+      ) : null}
+      {state.status === "done" && state.problems.length === 0 ? (
+        <div className="screenshot-import-status ok" role="status">
+          <p>Am completat rubricile din captură. Verifică-le o dată, apoi salvează.</p>
+          {state.notes.length ? <ul>{state.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+        </div>
+      ) : null}
+      {state.status === "done" && state.problems.length > 0 ? (
+        <div className="screenshot-import-status warn" role="alert">
+          <p>Am completat ce am putut citi. Verifică rubricile marcate cu galben:</p>
+          <ul>{[...state.problems, ...state.notes].map((item) => <li key={item}>{item}</li>)}</ul>
+        </div>
+      ) : null}
+      {state.status === "error" ? (
+        <div className="screenshot-import-status warn" role="alert"><p>{state.message}</p></div>
+      ) : null}
+      {state.status === "done" || state.status === "error" ? <RawOcrText text={rawText} /> : null}
+    </div>
+  );
+}
+
+function RidesharingEarningsFields({
   entry,
   platformLabel,
   showKilometers,
@@ -239,7 +564,10 @@ export function PlatformEarningsFields({
   onOtherPeriod,
   onChange,
   onReplace,
+  ownBusiness = false,
 }: {
+  /** Propria firmă: banii de pe card intră în contul firmei, nu la flotă. */
+  ownBusiness?: boolean;
   entry: PlatformEntryInput;
   platformLabel: string;
   showKilometers: boolean;
@@ -275,6 +603,7 @@ export function PlatformEarningsFields({
   const [flagged, setFlagged] = useState<ReadonlySet<ScreenshotField>>(
     () => new Set(initialReading?.needsCheck ?? []),
   );
+  const [rawText, setRawText] = useState<string | null>(initialReading?.rawText ?? null);
   const askPeriod = formPeriod?.type === "day" && Boolean(onOtherPeriod);
 
   const unflag = (key: keyof PlatformEntryInput) => {
@@ -303,6 +632,7 @@ export function PlatformEarningsFields({
       const reading = await readEarningsScreenshot(file, (stage, percent) =>
         setImportState({ status: "working", stage, percent }),
       );
+      setRawText(reading.rawText ?? null);
 
       if (!reading.recognized) {
         setFlagged(new Set());
@@ -375,6 +705,7 @@ export function PlatformEarningsFields({
         onCancelAsk={() => setImportState({ status: "idle" })}
         onFile={(file, period) => void importScreenshot(file, period)}
         onUseForWeek={onOtherPeriod ? (reading) => onOtherPeriod("week", reading) : undefined}
+        rawText={rawText}
       />
       <section className="earnings-group" aria-label="Venituri în aplicație">
         <GroupHead title="Venituri în aplicație" total={totals.appRevenue} />
@@ -390,7 +721,7 @@ export function PlatformEarningsFields({
         <GroupHead title="Venituri în numerar" total={totals.cashRevenue} />
         <div className="earnings-rows">
           <AmountRow label="Plăți pentru curse" note="Cash primit în mașină de la clienți" ariaLabel="Plăți pentru curse în numerar" value={entry.cashRidePayments} onChange={amount("cashRidePayments")} flagged={isFlagged("cashRidePayments")} />
-          <AmountRow label="Credite și promoții pentru utilizatori" note="Nu sunt bani în mână: se socotesc la card și ajung la flotă" ariaLabel="Credite și promoții pentru utilizatori" value={entry.userCredits} onChange={amount("userCredits")} flagged={isFlagged("userCredits")} />
+          <AmountRow label="Credite și promoții pentru utilizatori" note={ownBusiness ? "Nu sunt bani în mână: se socotesc la card și intră în contul firmei" : "Nu sunt bani în mână: se socotesc la card și ajung la flotă"} ariaLabel="Credite și promoții pentru utilizatori" value={entry.userCredits} onChange={amount("userCredits")} flagged={isFlagged("userCredits")} />
         </div>
       </section>
 
@@ -409,7 +740,7 @@ export function PlatformEarningsFields({
           <strong>+{money(totals.cashInHand)} RON</strong>
         </div>
         <div className="earnings-cash-pill card">
-          <span>Bani pe card, la flotă<small>inclusiv credite și promoții</small></span>
+          <span>{ownBusiness ? "Bani pe card, în contul firmei" : "Bani pe card, la flotă"}<small>inclusiv credite și promoții</small></span>
           <strong>+{money(cardMoney)} RON</strong>
         </div>
       </div>
@@ -430,21 +761,23 @@ export function PlatformEarningsFields({
   );
 }
 
-/** Rubrica pentru banii care nu apar în nicio aplicație de ridesharing. */
+/** Rubrica pentru banii care nu apar în nicio aplicație. */
 export function OtherEarningsFields({
   value,
   onChange,
+  delivery = false,
 }: {
   value: number;
   onChange: (value: number) => void;
+  delivery?: boolean;
 }) {
   return (
     <div className="earnings-sheet">
       <div className="earnings-group earnings-flat">
         <AmountRow
           emphasis
-          label="Curse private / alte încasări"
-          ariaLabel="Curse private / alte încasări"
+          label={delivery ? "Alte încasări" : "Curse private / alte încasări"}
+          ariaLabel={delivery ? "Alte încasări" : "Curse private / alte încasări"}
           value={value}
           onChange={(next) => onChange(next ?? 0)}
         />
@@ -454,6 +787,9 @@ export function OtherEarningsFields({
 }
 
 /** Explicația scurtă afișată deasupra rândurilor fiecărei platforme. */
-export function platformEarningsHelp(platformLabel: string, period: string) {
+export function platformEarningsHelp(platformLabel: string, period: string, delivery = false) {
+  if (delivery) {
+    return `Copiază încasările din ecranul de câștiguri din ${platformLabel}, pentru ${period}. Totalul se calculează singur.`;
+  }
   return `Încarcă captura sau copiază rând cu rând din ${platformLabel} → Defalcarea câștigurilor, pentru ${period}. Totalurile se calculează singure, ca să le poți compara cu aplicația.`;
 }

@@ -1,4 +1,5 @@
 import type { Worker } from "tesseract.js";
+import { parseDeliveryScreenshot, type DeliveryReading } from "./delivery-screenshot";
 import { parseEarningsScreenshot, type ScreenshotReading } from "./earnings-screenshot";
 
 /**
@@ -97,22 +98,40 @@ export async function prepareScreenshot(file: Blob): Promise<HTMLCanvasElement> 
   return canvas;
 }
 
-export async function readEarningsScreenshot(
-  file: Blob,
-  onProgress?: ReadProgress,
-): Promise<ScreenshotReading> {
+/** Data de azi în România, pentru anul capturilor care nu îl scriu. */
+export function todayInRomania() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Bucharest",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/** Textul brut din captură, rând cu rând. Folosit de toate cititoarele. */
+export async function readScreenshotText(file: Blob, onProgress?: ReadProgress): Promise<string> {
   progressListener = onProgress ?? null;
   try {
     const [worker, canvas] = await Promise.all([getWorker(), prepareScreenshot(file)]);
     const { data } = await worker.recognize(canvas);
-    const today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Europe/Bucharest",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    return parseEarningsScreenshot(data.text, today);
+    return data.text;
   } finally {
     progressListener = null;
   }
+}
+
+export async function readEarningsScreenshot(
+  file: Blob,
+  onProgress?: ReadProgress,
+): Promise<ScreenshotReading> {
+  const text = await readScreenshotText(file, onProgress);
+  return { ...parseEarningsScreenshot(text, todayInRomania()), rawText: text };
+}
+
+export async function readDeliveryScreenshot(
+  file: Blob,
+  onProgress?: ReadProgress,
+): Promise<DeliveryReading> {
+  const text = await readScreenshotText(file, onProgress);
+  return { ...parseDeliveryScreenshot(text, todayInRomania()), rawText: text };
 }

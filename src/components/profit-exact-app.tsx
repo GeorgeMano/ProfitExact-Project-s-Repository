@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { daysOfActivity, periodsOfActivity } from "@/lib/finance/activity";
 import type { OnboardingConfig } from "@/domain/onboarding";
 import {
   upsertManualPeriod,
@@ -114,6 +115,17 @@ export function ProfitExactApp() {
     [update],
   );
 
+  // Fiecare activitate își vede doar datele ei; celelalte rămân salvate.
+  const activity = snapshot.config?.activity ?? "ridesharing";
+  const activityDays = useMemo(
+    () => daysOfActivity(snapshot.savedDays, activity),
+    [snapshot.savedDays, activity],
+  );
+  const activityPeriods = useMemo(
+    () => periodsOfActivity(snapshot.manualPeriods, activity),
+    [snapshot.manualPeriods, activity],
+  );
+
   const saveDay = useCallback(
     (day: SavedWorkDay) => {
       update((current) => ({
@@ -220,8 +232,8 @@ export function ProfitExactApp() {
   return (
     <DailyCalculator
       config={snapshot.config}
-      savedDays={snapshot.savedDays}
-      manualPeriods={snapshot.manualPeriods}
+      savedDays={activityDays}
+      manualPeriods={activityPeriods}
       persistenceMode={mode}
       persistenceWarnings={warnings}
       onSaveDay={saveDay}

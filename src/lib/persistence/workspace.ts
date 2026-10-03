@@ -7,7 +7,14 @@ import type {
   ProfitView,
   RecurringCostConfig,
   VehicleOwnership,
+  LegalForm,
+  WorkMode,
+  TaxRegime,
+  Activity,
+  VehicleType,
+  DeliveryPlatform,
 } from "@/domain/onboarding";
+import { taxRegimesFor } from "@/domain/onboarding";
 import type { FinancialResult, FleetCommission } from "@/lib/finance/daily-result";
 import type { SavedManualPeriod, ManualPeriodValues } from "@/lib/finance/manual-period";
 import {
@@ -126,9 +133,24 @@ const costCategories = [
   "vignette",
   "leasing",
   "phone_internet",
+  "arr_authorization",
+  "employee_salary",
+  "bank_fees",
+  "business_other",
+  "transport_license",
+  "certified_copy",
+  "vehicle_badges",
+  "affiliation_fee",
+  "vehicle_maintenance",
 ] as const satisfies readonly RecurringCostConfig["category"][];
+const workModes = ["employee", "own_business"] as const satisfies readonly WorkMode[];
+const legalForms = ["srl", "pfa"] as const satisfies readonly LegalForm[];
+const taxRegimes = ["micro", "profit", "real", "norm"] as const satisfies readonly TaxRegime[];
 const summaryPeriods = ["week", "month"] as const satisfies readonly SummaryPeriod[];
-const platformKeys = ["bolt", "uber"] as const satisfies readonly PlatformKey[];
+const platformKeys = ["bolt", "uber", "glovo", "wolt", "bolt_food"] as const satisfies readonly PlatformKey[];
+const activities = ["ridesharing", "delivery", "both"] as const satisfies readonly Activity[];
+const vehicleTypes = ["car", "moto", "e_bike", "bicycle"] as const satisfies readonly VehicleType[];
+const deliveryPlatformKeys = ["glovo", "wolt", "bolt_food"] as const satisfies readonly DeliveryPlatform[];
 const kilometerEntryModes = [
   "per_platform",
   "shared",
@@ -174,7 +196,14 @@ function parseRecurringCost(value: unknown): RecurringCostConfig | null {
       : {}),
     effectiveFrom,
     paidToFleet: value.paidToFleet === true,
+    ...(value.oneTime === true && period === "validity" ? { oneTime: true } : {}),
   };
+}
+
+/** Modul de impozitare, numai dacă se potrivește formei firmei. */
+function readTaxRegime(value: unknown, legalForm: LegalForm): TaxRegime | null {
+  const regime = readEnum(value, taxRegimes);
+  return regime && taxRegimesFor(legalForm).includes(regime) ? regime : null;
 }
 
 export function parseOnboardingConfig(value: unknown): OnboardingConfig | null {
@@ -191,17 +220,34 @@ export function parseOnboardingConfig(value: unknown): OnboardingConfig | null {
   const effectiveFrom = readIsoDate(value.effectiveFrom);
   const fleetCommission = parseFleetCommission(value.fleetCommission);
   const cityKey = readString(value.cityKey);
+  // Configurațiile salvate înainte de alegerea formei de lucru sunt de angajat.
+  const workMode = value.workMode === undefined ? "employee" : readEnum(value.workMode, workModes);
+  const legalForm = readEnum(value.legalForm, legalForms);
+  const ownBusiness = workMode === "own_business";
+  const activity = readEnum(value.activity, activities);
+  const delivery = activity === "delivery";
+  const withDelivery = activity === "delivery" || activity === "both";
+  const deliveryFleetCommission =
+    activity === "both" ? parseFleetCommission(value.deliveryFleetCommission) : null;
+  const deliveryPlatforms = Array.isArray(value.deliveryPlatforms)
+    ? deliveryPlatformKeys.filter((key) => (value.deliveryPlatforms as unknown[]).includes(key))
+    : [];
+  // La ridesharing (și la „Ambele”) se lucrează cu mașina; configurațiile
+  // vechi nu au câmpul.
+  const vehicleType = delivery ? (readEnum(value.vehicleType, vehicleTypes) ?? "car") : "car";
 
   if (
-    value.activity !== "ridesharing" ||
-    value.workMode !== "employee" ||
+    !activity ||
+    (withDelivery && deliveryPlatforms.length === 0) ||
+    (value.workMode !== undefined && !workMode) ||
     !platform ||
     !profitView ||
     !vehicleOwnership ||
     !fuelType ||
     !effectiveFrom ||
     !fleetCommission ||
-    !cityKey
+    !cityKey ||
+    (ownBusiness && !legalForm)
   ) {
     return null;
   }
@@ -216,22 +262,31 @@ export function parseOnboardingConfig(value: unknown): OnboardingConfig | null {
     : [];
 
   return {
-    activity: "ridesharing",
-    workMode: "employee",
+    activity,
+    workMode: ownBusiness ? "own_business" : "employee",
+    legalForm: ownBusiness ? legalForm : null,
+    taxRegime: ownBusiness && legalForm ? readTaxRegime(value.taxRegime, legalForm) : null,
     platform,
+    deliveryPlatforms: withDelivery ? deliveryPlatforms : [],
     cityName: readString(value.cityName, cityKey),
     cityKey,
     profitView,
     kilometerEntry,
     vehicleOwnership,
+    vehicleType,
     fuelType,
     hybridType,
     primaryFuel,
     consumptionPer100Km: Math.max(0, readNumber(value.consumptionPer100Km)),
-    fleetCommission,
-    weeklyCimCost: Math.max(0, readNumber(value.weeklyCimCost)),
+    // La propria firmă nu există flotă. La delivery rămâne comisionul
+    // contractului de afiliere; la ridesharing nu se oprește nimic.
+    fleetCommission: ownBusiness && !delivery ? { type: "fixed", value: 0 } : fleetCommission,
+    ...(deliveryFleetCommission ? { deliveryFleetCommission } : {}),
+    weeklyCimCost: ownBusiness ? 0 : Math.max(0, readNumber(value.weeklyCimCost)),
     effectiveFrom,
-    recurringCosts,
+    recurringCosts: ownBusiness
+      ? recurringCosts.map((cost) => ({ ...cost, paidToFleet: false }))
+      : recurringCosts,
   };
 }
 
@@ -259,6 +314,9 @@ function readPlatformRows(value: Record<string, unknown>) {
     platformCosts,
     applicationCommission: commission,
     cashTips,
+    ...(readNumber(value.deliveries) > 0 ? { deliveries: Math.round(readNumber(value.deliveries)) } : {}),
+    ...(readNumber(value.cancelledDeliveries) > 0 ? { cancelledDeliveries: Math.round(readNumber(value.cancelledDeliveries)) } : {}),
+    ...(readNumber(value.hoursOnline) > 0 ? { hoursOnline: readNumber(value.hoursOnline) } : {}),
   };
 
   if ("appRidePayments" in value || "cashRidePayments" in value) {

@@ -728,15 +728,25 @@
     grid-template-columns: 1fr;
   }
 
+  /*
+   * Pe telefon, rezultatul stă sus, apoi formularul, apoi detaliile și
+   * regularizarea cu flota. Cardurile din coloana de rezultat devin elemente
+   * ale aceleiași coloane, ordonate aici.
+   */
   .result-column {
-    position: static;
-    grid-row: 1;
+    display: contents;
   }
 
-  .breakdown-card,
-  .fleet-card,
-  .preview-note {
-    display: none;
+  .result-card {
+    order: -1;
+  }
+
+  .form-card {
+    order: 0;
+  }
+
+  .result-column > :not(.result-card) {
+    order: 1;
   }
 }
 
@@ -871,6 +881,15 @@
   align-self: flex-end;
   margin-bottom: 8px;
   border-bottom: 1px dotted #b9c9c4;
+}
+
+/* Valoare calculată, nu introdusă (de exemplu media pe oră la Glovo). */
+.earnings-computed {
+  flex: 0 0 156px;
+  padding: 0 10px;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: right;
 }
 
 .earnings-input {
@@ -1194,4 +1213,126 @@
   .capture-period-choice > div {
     display: grid;
   }
+}
+
+/* Textul brut citit din captură, la cerere. */
+.ocr-raw {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.ocr-raw summary {
+  cursor: pointer;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.ocr-raw pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 8px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdfc;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- Telefon: bara de sus fixă, meniu, bara de rezultat ---------- */
+.mobile-result-bar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    min-height: 64px;
+    margin-inline: -22px;
+    padding: env(safe-area-inset-top, 0px) 22px 0;
+    background: #f4f7f5;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .topbar-actions,
+  .profile-pill {
+    display: none;
+  }
+
+  .app-shell {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Rezultatul rămâne la vedere cât completezi formularul. */
+  .mobile-result-bar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 35;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    background: #0d3a37;
+    color: #fff;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -10px 30px rgba(10, 30, 30, 0.18);
+  }
+
+  .mobile-result-bar.negative {
+    background: #5b1f1f;
+  }
+
+  .mobile-result-bar span {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0.85;
+  }
+
+  .mobile-result-bar strong {
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    opacity: 1;
+  }
+
+  .mobile-result-bar button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #10292a;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 800;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar {
+    margin-inline: -14px;
+    padding-inline: 14px;
+  }
+
+  /* Zilnic / Săptămânal / Lunar rămân pe un singur rând. */
+  .segmented.period-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* „Vezi calculul” nu trebuie să ascundă titlul sub bara de sus. */
+#calcul {
+  scroll-margin-top: 96px;
 }

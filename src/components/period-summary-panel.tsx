@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import {
   energyUnit,
+  isOwnBusiness,
+  isDelivery,
+  hasDelivery,
+  usesFuel,
+  commissionLabel,
   platformLabels,
   usesDirectPhevCosts,
   type OnboardingConfig,
@@ -16,19 +21,30 @@ import {
 } from "@/lib/finance/manual-period";
 import {
   missingEarningsMessage,
-  platformsFor,
+  platformsForConfig,
   type PlatformEntryInput,
   type PlatformKey,
+  isDeliveryPlatform,
 } from "@/lib/finance/platform-entry";
 import { resolvePeriod } from "@/lib/finance/period-sources";
 import { entryFromReading, type ScreenshotReading } from "@/lib/ocr/earnings-screenshot";
+import { fillFromDelivery, type DeliveryReading } from "@/lib/ocr/delivery-screenshot";
 import {
   buildManualPeriod,
   calculateManualPeriod,
   calendarCostsForRange,
+  sharedKilometersFor,
 } from "@/lib/finance/work-day";
 import { FleetSettlement } from "./fleet-settlement";
-import { OtherEarningsFields, PlatformEarningsFields, platformEarningsHelp } from "./platform-earnings-fields";
+import { DecimalInput } from "./decimal-input";
+import { ActivitySplitCard } from "./activity-split";
+import {
+  OtherEarningsFields,
+  PlatformEarningsFields,
+  platformEarningsHelp,
+  type CapturePeriod,
+  type InitialDelivery,
+} from "./platform-earnings-fields";
 import {
   aggregatePlatformEntries,
   getPeriodBounds,
@@ -48,9 +64,12 @@ export type { ManualPeriodValues, SavedManualPeriod };
 export interface IncomingCapture {
   id: number;
   platform: PlatformKey;
-  periodType: SummaryPeriod;
+  periodType: SummaryPeriod | "day";
   anchorDate: string;
-  reading: ScreenshotReading;
+  /** Captura Bolt/Uber („Defalcarea câștigurilor”). */
+  reading?: ScreenshotReading;
+  /** Captura unei aplicații de livrări, cu precizările despre perioadă. */
+  delivery?: InitialDelivery;
 }
 
 interface PeriodSummaryPanelProps {
@@ -67,6 +86,9 @@ interface PeriodSummaryPanelProps {
   onCaptureForOtherPeriod: (
     platform: PlatformKey,
   ) => (period: "week" | "month", reading: ScreenshotReading) => void;
+  onDeliveryCaptureForOtherPeriod: (
+    platform: PlatformKey,
+  ) => (period: CapturePeriod, anchorDate: string, reading: DeliveryReading, notes: string[]) => void;
   /** Ce se întâmplă cu datele introduse: demo local, cont real sau deloc. */
   persistenceNote: string;
 }
@@ -101,11 +123,11 @@ function formatPeriodResult(totalResult: number, kilometers: number, periodType:
     : `Ai pierdut ${perKm} RON/km în această ${periodType === "week" ? "săptămână" : "lună"}.`;
 }
 
-function NumberField({ label, value, onChange, suffix = "RON", step = "0.01" }: { label: string; value: number; onChange: (value: number) => void; suffix?: string; step?: string }) {
-  return <label className="field"><span>{label}</span><span className="input-wrap"><input type="number" min="0" step={step} value={value === 0 ? "" : value} onChange={(event) => onChange(Number(event.target.value))} /><small>{suffix}</small></span></label>;
+function NumberField({ label, value, onChange, suffix = "RON" }: { label: string; value: number; onChange: (value: number) => void; suffix?: string; step?: string }) {
+  return <label className="field"><span>{label}</span><span className="input-wrap"><DecimalInput value={value} onChange={(next) => onChange(next ?? 0)} /><small>{suffix}</small></span></label>;
 }
 
-function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCosts, existing, replacing, incoming, onCaptureForOtherPeriod, onSave, onDelete }: {
+function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCosts, existing, replacing, incoming, onCaptureForOtherPeriod, onDeliveryCaptureForOtherPeriod, onSave, onDelete }: {
   config: OnboardingConfig;
   periodType: SummaryPeriod;
   startDate: string;
@@ -116,20 +138,26 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
   replacing?: string | null;
   incoming?: IncomingCapture | null;
   onCaptureForOtherPeriod: PeriodSummaryPanelProps["onCaptureForOtherPeriod"];
+  onDeliveryCaptureForOtherPeriod: PeriodSummaryPanelProps["onDeliveryCaptureForOtherPeriod"];
   onSave: (entry: SavedManualPeriod) => void;
   onDelete?: () => void;
 }) {
   const periodNoun = periodType === "week" ? "săptămânii" : "lunii";
-  const platformKeys = useMemo(() => platformsFor(config.platform), [config.platform]);
+  const platformKeys = useMemo(() => platformsForConfig(config), [config]);
   const [values, setValues] = useState<ManualPeriodValues>(() => {
     const base = existing?.values ?? createEmptyManualPeriodValues(platformKeys);
     if (!incoming) return base;
     // Rubricile platformei din captură vin completate; restul rămân cum erau.
+    const includeKilometers = sharedKilometersFor(config, base.platforms, 0) === null;
     return {
       ...base,
-      platforms: base.platforms.map((entry) =>
-        entry.platform === incoming.platform ? entryFromReading(entry, incoming.reading) : entry,
-      ),
+      platforms: base.platforms.map((entry) => {
+        if (entry.platform !== incoming.platform) return entry;
+        if (incoming.delivery) {
+          return fillFromDelivery(entry, incoming.delivery.reading, { startDate, endDate }, includeKilometers).entry;
+        }
+        return incoming.reading ? entryFromReading(entry, incoming.reading) : entry;
+      }),
     };
   });
   const set = <Key extends keyof ManualPeriodValues>(key: Key, value: ManualPeriodValues[Key]) => setValues((current) => ({ ...current, [key]: value }));
@@ -142,6 +170,8 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
     }));
 
   const directPhevCosts = usesDirectPhevCosts(config);
+  const delivery = isDelivery(config);
+  const fuel = usesFuel(config);
   const { sharedKilometers: sharedKilometerInput, combined, energyCost, canCalculate } =
     calculateManualPeriod(config, values, calendarCosts);
   const usesSharedKilometers = sharedKilometerInput !== null;
@@ -159,18 +189,18 @@ function ManualPeriodForm({ config, periodType, startDate, endDate, calendarCost
       {values.platforms.map((entry, index) => (
         <fieldset className="section-block" key={entry.platform}>
           <legend>{platformLabels[entry.platform]}</legend>
-          <p className="section-help">{platformEarningsHelp(platformLabels[entry.platform], `întreaga ${periodType === "week" ? "săptămână" : "lună"}`)}</p>
-          <PlatformEarningsFields entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} kilometersEstimated formPeriod={{ type: periodType, startDate, endDate }} initialReading={incoming?.platform === entry.platform ? incoming.reading : null} onOtherPeriod={onCaptureForOtherPeriod(entry.platform)} onChange={(key, value) => setPlatform(index, key, value)} onReplace={(next) => setValues((current) => ({ ...current, platforms: current.platforms.map((item, position) => (position === index ? next : item)) }))} />
+          <p className="section-help">{platformEarningsHelp(platformLabels[entry.platform], `întreaga ${periodType === "week" ? "săptămână" : "lună"}`, isDeliveryPlatform(entry.platform))}</p>
+          <PlatformEarningsFields ownBusiness={isOwnBusiness(config)} entry={entry} platformLabel={platformLabels[entry.platform]} showKilometers={!usesSharedKilometers} kilometersEstimated formPeriod={{ type: periodType, startDate, endDate }} initialReading={incoming?.platform === entry.platform ? incoming.reading ?? null : null} initialDelivery={incoming?.platform === entry.platform && incoming.delivery ? { reading: incoming.delivery.reading, notes: [...incoming.delivery.notes, ...fillFromDelivery(entry, incoming.delivery.reading, { startDate, endDate }, false).notes] } : null} onDeliveryOtherPeriod={onDeliveryCaptureForOtherPeriod(entry.platform)} onOtherPeriod={onCaptureForOtherPeriod(entry.platform)} onChange={(key, value) => setPlatform(index, key, value)} onReplace={(next) => setValues((current) => ({ ...current, platforms: current.platforms.map((item, position) => (position === index ? next : item)) }))} />
         </fieldset>
       ))}
 
-      <fieldset className="section-block"><legend>Alte încasări</legend><p className="section-help">Bani primiți în afara aplicațiilor de ridesharing, cash sau prin transfer. Rămân integral la tine și nu trec prin flotă.</p><OtherEarningsFields value={values.privateEarnings} onChange={(value) => set("privateEarnings", value)} /></fieldset>
+      <fieldset className="section-block"><legend>Alte încasări</legend><p className="section-help">{delivery ? "Bani primiți în afara aplicațiilor de livrări, cash sau prin transfer." : config.activity === "both" ? "Bani primiți în afara aplicațiilor, cash sau prin transfer." : "Bani primiți în afara aplicațiilor de ridesharing, cash sau prin transfer."} {config.workMode === "own_business" ? "Se adaugă la câștigurile tale." : "Rămân integral la tine și nu trec prin flotă."}</p><OtherEarningsFields value={values.privateEarnings} onChange={(value) => set("privateEarnings", value)} delivery={delivery} /></fieldset>
 
-      <fieldset className="section-block"><legend>Activitatea și combustibilul perioadei</legend><p className="section-help">{usesSharedKilometers ? "Ai ales un singur total de kilometri. Introdu o estimare a kilometrilor reali ai perioadei, din kilometrajul mașinii, cu tot cu mersul în gol; repartizarea pe platformă se face proporțional cu încasările." : "Aplicațiile nu arată kilometrii pe toată perioada, așa că introdu o estimare din kilometrajul mașinii. Combustibilul se calculează din ea."}</p><div className="field-grid">
+      <fieldset className="section-block"><legend>{fuel ? "Activitatea și combustibilul perioadei" : "Activitatea perioadei"}</legend><p className="section-help">{usesSharedKilometers ? "Ai ales un singur total de kilometri. Introdu o estimare a kilometrilor reali ai perioadei, din kilometrajul mașinii, cu tot cu mersul în gol; repartizarea pe platformă se face proporțional cu încasările." : (fuel ? "Aplicațiile nu arată kilometrii pe toată perioada, așa că introdu o estimare din kilometrajul mașinii. Combustibilul se calculează din ea." : "Kilometrii sunt doar informativi: fără combustibil, nu schimbă rezultatul.")}</p><div className="field-grid">
         <NumberField label="Zile lucrate" value={values.workedDays} onChange={(value) => set("workedDays", value)} suffix="zile" step="1" />
         <NumberField label="Ore lucrate" value={values.hoursWorked} onChange={(value) => set("hoursWorked", value)} suffix="ore" step="0.25" />
         {usesSharedKilometers ? <NumberField label="Kilometri parcurși în total (estimativ)" value={values.sharedKilometers} onChange={(value) => set("sharedKilometers", value)} suffix="km" /> : <div className="readonly-field"><span>Kilometri în total (estimativ)</span><strong>{kilometers.toLocaleString("ro-RO")} km</strong></div>}
-        {directPhevCosts ? <><NumberField label="Cost benzină consumată în perioadă" value={values.gasolineCost} onChange={(value) => set("gasolineCost", value)} /><NumberField label="Cost energie electrică consumată în perioadă" value={values.electricCost} onChange={(value) => set("electricCost", value)} /></> : <><div className="readonly-field"><span>Consum configurat în onboarding</span><strong>{config.consumptionPer100Km.toLocaleString("ro-RO")} {config.fuelType === "electric" ? "kWh" : "litri"}/100 km</strong></div><NumberField label={`Prețul pe ${energyUnit(config)} folosit pentru perioadă`} value={values.unitPrice} onChange={(value) => set("unitPrice", value)} suffix={`RON/${energyUnit(config)}`} /><div className="calculation-preview"><div><span>{config.fuelType === "electric" ? "Energie calculată" : "Combustibil calculat"}</span><strong>{consumedInPeriod.toLocaleString("ro-RO", { maximumFractionDigits: 2 })} {config.fuelType === "electric" ? "kWh" : "litri"}</strong></div><div><span>Cheltuială calculată</span><strong>{money(energyCost)} RON</strong></div></div></>}
+        {!fuel ? null : directPhevCosts ? <><NumberField label="Cost benzină consumată în perioadă" value={values.gasolineCost} onChange={(value) => set("gasolineCost", value)} /><NumberField label="Cost energie electrică consumată în perioadă" value={values.electricCost} onChange={(value) => set("electricCost", value)} /></> : <><div className="readonly-field"><span>Consum configurat în onboarding</span><strong>{config.consumptionPer100Km.toLocaleString("ro-RO")} {config.fuelType === "electric" ? "kWh" : "litri"}/100 km</strong></div><NumberField label={`Prețul pe ${energyUnit(config)} folosit pentru perioadă`} value={values.unitPrice} onChange={(value) => set("unitPrice", value)} suffix={`RON/${energyUnit(config)}`} /><div className="calculation-preview"><div><span>{config.fuelType === "electric" ? "Energie calculată" : "Combustibil calculat"}</span><strong>{consumedInPeriod.toLocaleString("ro-RO", { maximumFractionDigits: 2 })} {config.fuelType === "electric" ? "kWh" : "litri"}</strong></div><div><span>Cheltuială calculată</span><strong>{money(energyCost)} RON</strong></div></div></>}
       </div><p className="helper">Dacă prețul a diferit între zile, introdu zilele separat pentru un calcul exact. Nu se scade valoarea integrală a unui plin rămas în rezervor.</p></fieldset>
 
       <fieldset className="section-block"><legend>Cheltuieli apărute în perioadă</legend><p className="section-help">Lasă necompletate costurile care nu au existat.</p><div className="field-grid">
@@ -190,7 +220,7 @@ function plural(count: number, one: string, many: string) {
   return count === 1 ? `1 ${one}` : `${count} ${many}`;
 }
 
-export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, manualPeriods, onSaveManualPeriod, onDeleteManualPeriod, incomingCapture, onIncomingCaptureUsed, onCaptureForOtherPeriod, persistenceNote }: PeriodSummaryPanelProps) {
+export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, manualPeriods, onSaveManualPeriod, onDeleteManualPeriod, incomingCapture, onIncomingCaptureUsed, onCaptureForOtherPeriod, onDeliveryCaptureForOtherPeriod, persistenceNote }: PeriodSummaryPanelProps) {
   const { startDate, endDate } = getPeriodBounds(anchorDate, periodType);
   const periodLabel = periodType === "week" ? "săptămânii" : "lunii";
   const recurring = useMemo(
@@ -198,6 +228,10 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
     [config.recurringCosts, startDate, endDate],
   );
   const calendarCosts: PeriodCalendarCosts = calendarCostsForRange(config, startDate, endDate);
+  const ownBusiness = isOwnBusiness(config);
+  const delivery = isDelivery(config);
+  const fuel = usesFuel(config);
+  const showCommission = !ownBusiness || (hasDelivery(config) && (config.fleetCommission.type === "percentage" || config.deliveryFleetCommission?.type === "percentage"));
 
   // Ce intră în calcul: totalul introdus are prioritate față de zilele și
   // săptămânile din interiorul lui (regula din `period-sources`).
@@ -260,19 +294,19 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
           </div> : null}
           {resolved.source === "automatic" && !showForm ? <button type="button" className="replace-period-button" onClick={() => setReplacingFor(`${periodType}:${startDate}`)}>Introdu totalul {periodLabel} în locul lor</button> : null}
         </section>
-        {showForm ? <ManualPeriodForm key={`${periodType}:${startDate}:${manual?.id ?? "nou"}:${incoming?.id ?? ""}`} config={config} periodType={periodType} startDate={startDate} endDate={endDate} calendarCosts={calendarCosts} existing={manual} replacing={manual ? null : pendingReplacement} incoming={incoming} onCaptureForOtherPeriod={onCaptureForOtherPeriod} onSave={(entry) => { setReplacingFor(null); onIncomingCaptureUsed(); onSaveManualPeriod(entry); }} onDelete={manual ? () => onDeleteManualPeriod(manual.id) : undefined} /> : <section className="section-block"><h3>Costuri repartizate automat</h3><p className="section-help">CIM și costurile recurente din onboarding sunt calculate pentru fiecare zi calendaristică a perioadei, inclusiv zilele nelucrate.</p><dl className="compact-cost-list"><div><dt>CIM</dt><dd>{money(calendarCosts.cimCost)} RON</dd></div>{recurring.map((cost) => <div key={cost.id}><dt>{cost.label}</dt><dd>{money(cost.periodAmount)} RON</dd></div>)}</dl></section>}
+        {showForm ? <ManualPeriodForm key={`${periodType}:${startDate}:${manual?.id ?? "nou"}:${incoming?.id ?? ""}`} config={config} periodType={periodType} startDate={startDate} endDate={endDate} calendarCosts={calendarCosts} existing={manual} replacing={manual ? null : pendingReplacement} incoming={incoming} onCaptureForOtherPeriod={onCaptureForOtherPeriod} onDeliveryCaptureForOtherPeriod={onDeliveryCaptureForOtherPeriod} onSave={(entry) => { setReplacingFor(null); onIncomingCaptureUsed(); onSaveManualPeriod(entry); }} onDelete={manual ? () => onDeleteManualPeriod(manual.id) : undefined} /> : <section className="section-block"><h3>Costuri repartizate automat</h3><p className="section-help">{ownBusiness ? "Costurile recurente din configurare sunt calculate" : "CIM și costurile recurente din onboarding sunt calculate"} pentru fiecare zi calendaristică a perioadei, inclusiv zilele nelucrate.</p><dl className="compact-cost-list">{ownBusiness ? null : <div><dt>CIM</dt><dd>{money(calendarCosts.cimCost)} RON</dd></div>}{recurring.map((cost) => <div key={cost.id}><dt>{cost.label}</dt><dd>{money(cost.periodAmount)} RON</dd></div>)}</dl></section>}
       </div>
 
       <aside className="result-column" aria-live="polite">
         {hasData ? <>
-          <section className={`result-card ${summary.totalResult < 0 ? "negative" : "positive"}`}><p className="result-label">Îți rămân în această {periodType === "week" ? "săptămână" : "lună"}</p><p className="result-value">{money(summary.totalResult)} RON</p><p className="result-alert">{formatPeriodResult(summary.totalResult, summary.totalKilometers, periodType)}</p></section>
-          <section className="breakdown-card"><div className="card-heading"><div><p className="eyebrow">Calcul transparent</p><h2>Detaliile {periodLabel}</h2></div><span>{shortDate(startDate)} – {shortDate(endDate)}</span></div><dl className="breakdown-list">
-            <div><dt>Venituri în aplicație</dt><dd>{money(summary.totalAppRevenue)} RON</dd></div>
-            <div><dt>Venituri în numerar</dt><dd>{money(summary.totalCashRevenue)} RON</dd></div>
+          <section className={`result-card ${summary.totalResult < 0 ? "negative" : "positive"}`}><p className="result-label">Îți rămân în această {periodType === "week" ? "săptămână" : "lună"}{ownBusiness ? ", înainte de taxe" : ""}</p><p className="result-value">{money(summary.totalResult)} RON</p><p className="result-alert">{formatPeriodResult(summary.totalResult, summary.totalKilometers, periodType)}</p></section>
+          <section className="breakdown-card" id="calcul"><div className="card-heading"><div><p className="eyebrow">Calcul transparent</p><h2>Detaliile {periodLabel}</h2></div><span>{shortDate(startDate)} – {shortDate(endDate)}</span></div><dl className="breakdown-list">
+            <div><dt>{hasDelivery(config) ? "Încasări din aplicații" : "Venituri în aplicație"}</dt><dd>{money(summary.totalAppRevenue)} RON</dd></div>
+            {delivery ? null : <div><dt>Venituri în numerar</dt><dd>{money(summary.totalCashRevenue)} RON</dd></div>}
             {summary.totalPlatformCosts > 0 ? <div><dt>Costuri și taxe</dt><dd>− {money(summary.totalPlatformCosts)} RON</dd></div> : null}
-            <div><dt>Comision aplicație</dt><dd>− {money(summary.totalApplicationCommission)} RON</dd></div>
+            {delivery ? null : <div><dt>Comision aplicație</dt><dd>− {money(summary.totalApplicationCommission)} RON</dd></div>}
             <div><dt>Câștigurile tale</dt><dd>{money(summary.totalNetEarnings)} RON</dd></div>
-            <div><dt>Numerar în mână</dt><dd>{money(summary.totalCashInHand)} RON</dd></div>
+            {delivery ? null : <div><dt>Numerar în mână</dt><dd>{money(summary.totalCashInHand)} RON</dd></div>}
             {summary.totalCashTips > 0 ? <div><dt>Bacșiș numerar</dt><dd>{money(summary.totalCashTips)} RON</dd></div> : null}
             {summary.totalPrivateEarnings > 0 ? <div><dt>Curse private / alte încasări</dt><dd>{money(summary.totalPrivateEarnings)} RON</dd></div> : null}
             <div><dt>Total câștiguri</dt><dd>{money(summary.totalEarnings)} RON</dd></div>
@@ -280,9 +314,9 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
             <div><dt>Ore lucrate</dt><dd>{summary.totalHours.toLocaleString("ro-RO")} ore</dd></div>
             {resultPerHour !== null ? <div><dt>Câștig după cheltuieli / oră</dt><dd>{money(resultPerHour)} RON</dd></div> : null}
             <div><dt>{kilometerLabel}</dt><dd>{summary.totalKilometers.toLocaleString("ro-RO")} km</dd></div>
-            <div><dt>Combustibil / energie</dt><dd>− {money(summary.totalEnergyCost)} RON</dd></div>
-            <div><dt>Comision flotă</dt><dd>− {money(summary.totalFleetCommission)} RON</dd></div>
-            <div><dt>CIM repartizat</dt><dd>− {money(summary.totalCimCost)} RON</dd></div>
+            {fuel ? <div><dt>Combustibil / energie</dt><dd>− {money(summary.totalEnergyCost)} RON</dd></div> : null}
+            {showCommission ? <div><dt>{commissionLabel(config)}</dt><dd>− {money(summary.totalFleetCommission)} RON</dd></div> : null}
+            {ownBusiness ? null : <div><dt>CIM repartizat</dt><dd>− {money(summary.totalCimCost)} RON</dd></div>}
             <div><dt>Costuri recurente</dt><dd>− {money(summary.totalRecurringCosts)} RON</dd></div>
             <div><dt>Cheltuieli apărute în perioadă</dt><dd>− {money(summary.totalOneOffCosts)} RON</dd></div>
             <div className="total-row"><dt>Total cheltuieli</dt><dd>− {money(summary.totalExpenses)} RON</dd></div>
@@ -290,17 +324,19 @@ export function PeriodSummaryPanel({ config, periodType, anchorDate, savedDays, 
           {showSeparateView ? <section className="breakdown-card platform-breakdown-card"><div className="card-heading"><div><p className="eyebrow">Separat pe platformă</p><h2>Ce a adus fiecare aplicație</h2></div></div><p className="section-help">Se separă doar ce se poate măsura: încasările și comisionul din fiecare aplicație și kilometrii, plus combustibilul care decurge din ei.</p>{platformTotals.map((item) => <dl className="breakdown-list" key={item.platform} aria-label={`Detalii ${platformLabels[item.platform]}`}>
             <div className="total-row"><dt>{platformLabels[item.platform]}</dt><dd>{money(item.resultBeforeCommonCosts)} RON</dd></div>
             <div><dt>Câștigurile tale</dt><dd>{money(item.netEarnings)} RON</dd></div>
-            <div><dt>Numerar în mână</dt><dd>{money(item.cashInHand)} RON</dd></div>
+            {isDeliveryPlatform(item.platform) ? null : <div><dt>Numerar în mână</dt><dd>{money(item.cashInHand)} RON</dd></div>}
             <div><dt>Total câștiguri</dt><dd>{money(item.totalEarnings)} RON</dd></div>
             <div><dt>{kilometerLabel}</dt><dd>{item.kilometers.toLocaleString("ro-RO")} km</dd></div>
-            <div><dt>Combustibil / energie</dt><dd>− {money(item.energyCost)} RON</dd></div>
-            <div><dt>Comision flotă</dt><dd>− {money(item.fleetCommission)} RON</dd></div>
+            {fuel ? <div><dt>Combustibil / energie</dt><dd>− {money(item.energyCost)} RON</dd></div> : null}
+            {showCommission ? <div><dt>{commissionLabel(config)}</dt><dd>− {money(item.fleetCommission)} RON</dd></div> : null}
             {item.kilometers > 0 ? <div><dt>Câștig pe kilometru</dt><dd>{money(item.resultBeforeCommonCosts / item.kilometers)} RON/km</dd></div> : null}
           </dl>)}<p className="helper">Sumele nu includ CIM-ul, chiria, RCA, spălarea sau parcarea: acelea sunt ale perioadei și ale mașinii, nu ale unei aplicații. Rezultatul final al {periodLabel} este același, fie că îl privești împreună sau separat.</p></section> : null}
-          <FleetSettlement title={`Regularizarea ${periodLabel}`} balance={summary.totalFleetBalance} amountManagedByFleet={summary.totalAmountManagedByFleet} fleetCommission={summary.totalFleetCommission} cimCost={summary.totalCimCost} cimLabel="CIM repartizat" otherFleetCosts={roundMoney(summary.totalFleetCosts - summary.totalCimCost)} note="Numerarul în mână și bacșișul cash rămân la tine. Flota primește restul câștigurilor, inclusiv creditele și promoțiile, și oprește din ei comisionul, CIM-ul și costurile plătite ei." />
+          {showSeparateView && config.activity === "both" ? <ActivitySplitCard items={platformTotals} totalResult={summary.totalResult} privateEarnings={summary.totalPrivateEarnings} periodLabel={periodType === "week" ? "în această săptămână" : "în această lună"} /> : null}
+          {ownBusiness ? null : <FleetSettlement title={`Regularizarea ${periodLabel}`} balance={summary.totalFleetBalance} amountManagedByFleet={summary.totalAmountManagedByFleet} fleetCommission={summary.totalFleetCommission} cimCost={summary.totalCimCost} cimLabel="CIM repartizat" otherFleetCosts={roundMoney(summary.totalFleetCosts - summary.totalCimCost)} note="Numerarul în mână și bacșișul cash rămân la tine. Flota primește restul câștigurilor, inclusiv creditele și promoțiile, și oprește din ei comisionul, CIM-ul și costurile plătite ei." />}
         </> : <section className="breakdown-card empty-period-card"><p className="eyebrow">Centralizare</p><h2>Completează datele perioadei</h2><p>Rezultatul apare după ce introduci comisionul exact din aplicație și salvezi perioada.</p></section>}
         <p className="preview-note">{persistenceNote}</p>
       </aside>
+      {hasData ? <div className={`mobile-result-bar ${summary.totalResult < 0 ? "negative" : ""}`}><span>Rezultat {periodType === "week" ? "săptămână" : "lună"}<strong>{money(summary.totalResult)} RON</strong></span><button type="button" onClick={() => document.getElementById("calcul")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Vezi calculul</button></div> : null}
     </section>
   );
 }

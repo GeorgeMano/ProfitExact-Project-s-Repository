@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OnboardingConfig, PlatformChoice } from "@/domain/onboarding";
 import type { SavedManualPeriod } from "@/lib/finance/manual-period";
-import { platformsFor } from "@/lib/finance/platform-entry";
+import { platformsForConfig } from "@/lib/finance/platform-entry";
+import { daysOfActivity, periodsOfActivity } from "@/lib/finance/activity";
 import type { SavedWorkDay } from "@/lib/finance/weekly-summary";
 import {
   rebuildHistory,
@@ -139,11 +140,14 @@ export function createSupabaseWorkspaceRepository(
 ): WorkspaceRepository {
   /** Găsește contextul de lucru al utilizatorului, fără să îl creeze. */
   async function findContext(): Promise<ContextRow | null> {
+    // Deocamdată un utilizator are o singură activitate: cea configurată ultima.
     const { data } = await client
       .from("work_contexts")
       .select("id")
       .eq("user_id", userId)
-      .eq("activity", "ridesharing")
+      .not("onboarding_completed_at", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     return (data as ContextRow | null) ?? null;
   }
@@ -154,9 +158,10 @@ export function createSupabaseWorkspaceRepository(
       .upsert(
         {
           user_id: userId,
-          activity: "ridesharing",
-          work_mode: "employee",
-          legal_form: null,
+          activity: config.activity,
+          work_mode: config.workMode,
+          legal_form: config.workMode === "own_business" ? config.legalForm : null,
+          tax_regime: config.workMode === "own_business" ? config.taxRegime : null,
           city_name: config.cityName,
           city_key: config.cityKey,
           profit_view: config.profitView,
@@ -180,7 +185,7 @@ export function createSupabaseWorkspaceRepository(
     // Platformele alese: se rescriu integral, ca să dispară cele deselectate.
     await client.from("context_platforms").delete().eq("context_id", contextId);
     await client.from("context_platforms").insert(
-      platformsFor(config.platform).map((platform) => ({
+      platformsForConfig(config).map((platform) => ({
         context_id: contextId,
         user_id: userId,
         platform,
@@ -193,6 +198,7 @@ export function createSupabaseWorkspaceRepository(
       user_id: userId,
       context_id: contextId,
       ownership_type: config.vehicleOwnership,
+      vehicle_type: config.vehicleType,
       fuel_type: config.fuelType,
       hybrid_type: config.hybridType,
       primary_fuel: config.primaryFuel,
@@ -230,6 +236,15 @@ export function createSupabaseWorkspaceRepository(
             ? config.fleetCommission.base
             : null,
         weekly_cim_cost: Math.max(0, config.weeklyCimCost),
+        // La „Ambele”: comisionul de la delivery, dacă e altul (migrația 202610030005).
+        delivery_commission_type: config.deliveryFleetCommission?.type ?? null,
+        delivery_commission_value: config.deliveryFleetCommission
+          ? Math.max(0, config.deliveryFleetCommission.value)
+          : null,
+        delivery_commission_base:
+          config.deliveryFleetCommission?.type === "percentage"
+            ? config.deliveryFleetCommission.base
+            : null,
         effective_from: config.effectiveFrom,
         effective_to: null,
       },
@@ -256,6 +271,7 @@ export function createSupabaseWorkspaceRepository(
           period: cost.period,
           validity_days: cost.period === "validity" ? (cost.validityDays ?? null) : null,
           paid_to_fleet: cost.paidToFleet,
+          one_time: cost.period === "validity" && cost.oneTime === true,
           effective_from: cost.effectiveFrom,
           effective_to: null,
         })),
@@ -503,6 +519,9 @@ export function createSupabaseWorkspaceRepository(
           cash_in_hand: Math.max(0, entry.cashInHand),
           cash_tips: Math.max(0, entry.cashTips),
           kilometers: Math.max(0, entry.kilometers),
+          deliveries: entry.deliveries ? Math.max(0, Math.round(entry.deliveries)) : null,
+          cancelled_deliveries: entry.cancelledDeliveries ? Math.max(0, Math.round(entry.cancelledDeliveries)) : null,
+          hours_online: entry.hoursOnline ? Math.max(0, entry.hoursOnline) : null,
           updated_at: new Date().toISOString(),
         };
       })
@@ -567,7 +586,7 @@ export function createSupabaseWorkspaceRepository(
       client
         .from("platform_earnings")
         .select(
-          "work_entry_id, platform, card_earnings, campaigns, cancellation_fees, app_tips, cash_earnings, user_credits, compensations, platform_costs, application_commission, cash_tips, kilometers",
+          "work_entry_id, platform, card_earnings, campaigns, cancellation_fees, app_tips, cash_earnings, user_credits, compensations, platform_costs, application_commission, cash_tips, kilometers, deliveries, cancelled_deliveries, hours_online",
         )
         .in("work_entry_id", ids),
       client
@@ -619,28 +638,28 @@ export function createSupabaseWorkspaceRepository(
         client
           .from("vehicles")
           .select(
-            "ownership_type, fuel_type, hybrid_type, primary_fuel, consumption_per_100, effective_from",
+            "ownership_type, vehicle_type, fuel_type, hybrid_type, primary_fuel, consumption_per_100, effective_from",
           )
           .eq("context_id", context.id)
           .is("effective_to", null)
           .maybeSingle(),
         client
           .from("fleet_config_versions")
-          .select("commission_type, commission_value, commission_base, weekly_cim_cost, effective_from")
+          .select("commission_type, commission_value, commission_base, weekly_cim_cost, effective_from, delivery_commission_type, delivery_commission_value, delivery_commission_base")
           .eq("context_id", context.id)
           .order("effective_from", { ascending: false })
           .limit(1)
           .maybeSingle(),
         client
           .from("recurring_costs")
-          .select("id, category, label, amount, period, validity_days, paid_to_fleet, effective_from")
+          .select("id, category, label, amount, period, validity_days, paid_to_fleet, effective_from, one_time")
           .eq("context_id", context.id)
           .is("effective_to", null),
       ]);
 
       const { data: contextRow } = await client
         .from("work_contexts")
-        .select("city_name, city_key, profit_view, kilometer_entry")
+        .select("city_name, city_key, profit_view, kilometer_entry, work_mode, legal_form, tax_regime, activity")
         .eq("id", context.id)
         .maybeSingle();
 
@@ -664,14 +683,18 @@ export function createSupabaseWorkspaceRepository(
             : "bolt";
 
       snapshot.config = parseOnboardingConfig({
-        activity: "ridesharing",
-        workMode: "employee",
+        activity: contextData.activity,
+        workMode: contextData.work_mode,
+        legalForm: contextData.legal_form,
+        taxRegime: contextData.tax_regime,
         platform,
+        deliveryPlatforms: chosen,
         cityName: contextData.city_name,
         cityKey: contextData.city_key,
         profitView: contextData.profit_view,
         kilometerEntry: contextData.kilometer_entry,
         vehicleOwnership: vehicleRow.ownership_type,
+        vehicleType: vehicleRow.vehicle_type,
         fuelType: vehicleRow.fuel_type,
         hybridType: vehicleRow.hybrid_type,
         primaryFuel: vehicleRow.primary_fuel,
@@ -685,6 +708,12 @@ export function createSupabaseWorkspaceRepository(
               }
             : { type: "fixed", value: Number(fleetRow.commission_value) },
         weeklyCimCost: Number(fleetRow.weekly_cim_cost),
+        deliveryFleetCommission:
+          fleetRow.delivery_commission_type === "percentage"
+            ? { type: "percentage", value: Number(fleetRow.delivery_commission_value), base: fleetRow.delivery_commission_base }
+            : fleetRow.delivery_commission_type === "fixed"
+              ? { type: "fixed", value: Number(fleetRow.delivery_commission_value) }
+              : undefined,
         effectiveFrom: vehicleRow.effective_from,
         recurringCosts: ((recurring.data as Record<string, unknown>[] | null) ?? []).map(
           (cost) => ({
@@ -696,6 +725,7 @@ export function createSupabaseWorkspaceRepository(
             validityDays: cost.validity_days ?? undefined,
             effectiveFrom: cost.effective_from,
             paidToFleet: cost.paid_to_fleet === true,
+            oneTime: cost.one_time === true,
           }),
         ),
       });
@@ -720,7 +750,16 @@ export function createSupabaseWorkspaceRepository(
       try {
         const contextId = await upsertContext(snapshot.config);
         await saveConfig(snapshot.config, contextId);
-        const warnings = await saveEntries(snapshot, contextId);
+        // Fiecare activitate are contextul ei: aici ajung doar datele activității curente.
+        const activity = snapshot.config.activity;
+        const warnings = await saveEntries(
+          {
+            ...snapshot,
+            savedDays: daysOfActivity(snapshot.savedDays, activity),
+            manualPeriods: periodsOfActivity(snapshot.manualPeriods, activity),
+          },
+          contextId,
+        );
         return { warnings };
       } catch (error) {
         return {

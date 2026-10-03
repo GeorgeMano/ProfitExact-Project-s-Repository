@@ -95,3 +95,28 @@ describe("allocateRecurringCost", () => {
     expect(inclusiveDays("2026-09-01", "2026-09-30")).toBe(30);
   });
 });
+
+describe("cost plătit o singură dată", () => {
+  const license = {
+    id: "licenta",
+    category: "transport_license" as const,
+    label: "Licență de transport alternativ",
+    amount: 365,
+    period: "validity" as const,
+    validityDays: 365,
+    oneTime: true,
+    effectiveFrom: "2026-10-01",
+    paidToFleet: false,
+  };
+
+  it("se împarte pe perioada aleasă", () => {
+    expect(allocateRecurringCost(license, "2026-10-01")).toBe(1);
+    expect(allocateRecurringCost(license, "2027-09-30")).toBe(1);
+    expect(allocateRecurringCostForRange(license, "2026-10-01", "2027-09-30")).toBeCloseTo(365);
+  });
+
+  it("nu se mai adaugă după aceea", () => {
+    expect(allocateRecurringCost(license, "2027-10-01")).toBe(0);
+    expect(allocateRecurringCost({ ...license, oneTime: false }, "2027-10-01")).toBe(1);
+  });
+});

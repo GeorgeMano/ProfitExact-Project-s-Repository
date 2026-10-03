@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clickTopAction } from "./menu";
 
 /**
  * Verifică defalcarea pe platformă: că alegerea „Separat pe platformă” chiar
@@ -158,7 +159,7 @@ test("profitul zilei este identic în ambele moduri de vizualizare", async ({ pa
   await expect(page.locator(".platform-breakdown-card")).toBeVisible();
 
   // Aceleași cifre, dar cu rezultatul privit împreună.
-  await page.getByRole("button", { name: "Șterge datele de test" }).click();
+  await clickTopAction(page, "Șterge datele de test");
   await createDemoAccount(page);
   await onboardBothPlatforms(page, "together");
   await fillBothPlatforms(page);

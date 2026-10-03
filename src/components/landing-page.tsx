@@ -2,6 +2,12 @@
 
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";
+import { MobileMenu } from "./mobile-menu";
+
+/** Derulează lin la o secțiune a paginii. */
+function goTo(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 export function LandingPage({
   onCreateAccount,
@@ -33,6 +39,22 @@ export function LandingPage({
           <a href="#pentru-cine">Cui i se adresează</a>
           <a href="#suport">Suport</a>
         </nav>
+        <MobileMenu
+          label="Meniul paginii"
+          items={[
+            { label: "Cum funcționează", onSelect: () => goTo("cum-functioneaza") },
+            { label: "Ce afli", onSelect: () => goTo("ce-afli") },
+            { label: "Cui i se adresează", onSelect: () => goTo("pentru-cine") },
+            { label: "Suport", onSelect: () => goTo("suport") },
+            "separator",
+            ...(onResume
+              ? [{ label: "Intră în aplicație", onSelect: onResume, tone: "primary" as const }]
+              : [
+                  { label: "Intră în cont", onSelect: onSignIn },
+                  { label: "Creează cont gratuit", onSelect: onCreateAccount, tone: "primary" as const },
+                ]),
+          ]}
+        />
         {onResume ? <button className="landing-header-button" type="button" onClick={onResume}>Intră în aplicație</button> : <div className="landing-header-actions"><button className="landing-header-link" type="button" onClick={onSignIn}>Intră în cont</button><button className="landing-header-button" type="button" onClick={onCreateAccount}>Creează cont</button></div>}
       </header>
 

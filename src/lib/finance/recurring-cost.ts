@@ -24,6 +24,15 @@ export function allocateRecurringCost(
     return 0;
   }
 
+  // Un cost plătit o singură dată se împarte numai pe perioada aleasă.
+  if (
+    cost.oneTime &&
+    cost.period === "validity" &&
+    inclusiveDays(cost.effectiveFrom, date) > Math.max(1, cost.validityDays ?? 1)
+  ) {
+    return 0;
+  }
+
   const [year, month] = date.split("-").map(Number);
 
   switch (cost.period) {

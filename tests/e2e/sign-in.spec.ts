@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clickTopAction } from "./menu";
 
 /**
  * Conectarea, parola uitată și ieșirea din cont, în modul de depanare local.
@@ -34,7 +35,7 @@ async function createAccountAndOnboard(page: Page) {
 test("ieșirea din cont păstrează datele, iar conectarea le aduce înapoi", async ({ page }) => {
   await createAccountAndOnboard(page);
 
-  await page.getByRole("button", { name: "Ieși din cont" }).click();
+  await clickTopAction(page, "Ieși din cont");
   await expect(page.getByRole("heading", { name: /Știi cât încasezi/ })).toBeVisible();
   // După ieșire nu se mai intră fără conectare.
   await expect(page.getByRole("button", { name: "Continuă de unde ai rămas" })).toHaveCount(0);
@@ -65,7 +66,7 @@ test("conectarea cu un email necunoscut explică de ce nu merge", async ({ page 
 
 test("parola uitată se schimbă cu un cod primit pe email", async ({ page }) => {
   await createAccountAndOnboard(page);
-  await page.getByRole("button", { name: "Ieși din cont" }).click();
+  await clickTopAction(page, "Ieși din cont");
 
   await page.getByRole("button", { name: "Intră în cont" }).first().click();
   await page.getByRole("button", { name: "Am uitat parola" }).click();

@@ -4,12 +4,14 @@
 .landing-brand { display: inline-flex; align-items: center; gap: 11px; border: 0; background: transparent; color: var(--ink); font-size: 19px; font-weight: 850; letter-spacing: -.03em; text-decoration: none; }
 .landing-brand-mark { display: block; width: 42px; height: 42px; flex: 0 0 42px; }
 .landing-brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.landing-header nav { display: flex; align-items: center; gap: 26px; }
-.landing-header nav a { color: var(--muted); font-size: 14px; font-weight: 700; text-decoration: none; }
+.landing-header > nav { display: flex; align-items: center; gap: 26px; }
+.landing-header > nav a { color: var(--muted); font-size: 14px; font-weight: 700; text-decoration: none; }
 .landing-header-actions { display: flex; align-items: center; gap: 8px; }
 .landing-header-link { min-height: 40px; border: 0; background: transparent; color: var(--brand); padding: 0 10px; font-weight: 800; }
 .inline-link { border: 0; background: transparent; color: var(--brand); padding: 0; font: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .hero-signin { margin: 16px 0 0; color: var(--muted); font-size: 14px; }
+/* Pe telefon, linkul are o zonă de atingere pe măsura degetului. */
+.hero-signin .inline-link { display: inline-block; min-height: 40px; padding: 10px 4px; }
 .landing-header-button { min-height: 40px; border: 1px solid rgba(7,92,85,.2); border-radius: 10px; background: #fff; color: var(--brand); padding: 0 15px; font-weight: 800; }
 .landing-hero { display: grid; grid-template-columns: minmax(0,1.08fr) minmax(380px,.92fr); align-items: center; gap: 58px; padding-block: 82px 72px; }
 .landing-kicker { margin: 0 0 12px; color: var(--brand); font-size: 12px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
@@ -124,7 +126,8 @@
 .resend-button:disabled { cursor: not-allowed; opacity: .55; }
 
 @media (max-width: 900px) {
-  .landing-header nav { display: none; }
+  .landing-header > nav { display: none; }
+  .landing-header-actions, .landing-header > .landing-header-button { display: none; }
   .landing-hero, .onboarding-explainer, .audience-section, .transparency-section, .support-section { grid-template-columns: 1fr; }
   .landing-hero { padding-block: 58px; }
   .hero-report { max-width: 620px; transform: none; }

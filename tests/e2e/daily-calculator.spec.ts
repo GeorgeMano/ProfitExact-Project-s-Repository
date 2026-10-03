@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { clickTopAction } from "./menu";
 
 test("toate butoanele de creare cont deschid formularul", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Creează cont", exact: true }).click();
+  await clickTopAction(page, /^Creează cont( gratuit)?$/);
   await expect(page.getByRole("heading", { name: "Creează contul" })).toBeVisible();
 
   await page.goto("/");
@@ -21,7 +22,7 @@ test("toate butoanele de creare cont deschid formularul", async ({ page }) => {
 
 test("formularul explică de ce un cont nu poate fi creat", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Creează cont", exact: true }).click();
+  await clickTopAction(page, /^Creează cont( gratuit)?$/);
   await page.getByRole("button", { name: "Creează contul" }).click();
   await expect(page.locator(".account-error")).toHaveText(
     "Introdu o adresă de email validă.",
@@ -172,4 +173,34 @@ test("parcurge onboarding-ul și actualizează rezultatul zilnic", async ({ page
   await expect(page.getByRole("heading", { name: "Centralizarea lunii" })).toBeVisible();
   await expect(page.getByText(/1 săptămână introdusă ca total/)).toBeVisible();
   await expect(page.getByText("Săptămână · 12.10.2026–18.10.2026")).toBeVisible();
+});
+
+test("sumele se pot scrie cu virgulă, ca în România", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Creează cont gratuit" }).first().click();
+  await page.getByLabel("Adresă de email").fill("virgula@profitexact.test");
+  await page.getByLabel("Parolă", { exact: true }).fill("profitexact123");
+  await page.getByLabel("Confirmă parola").fill("profitexact123");
+  await page.getByRole("button", { name: "Creează contul" }).click();
+  await page.getByLabel("Cod primit pe email").fill("123456");
+  await page.getByRole("button", { name: "Verifică emailul" }).click();
+  for (let step = 0; step < 3; step += 1) await page.getByRole("button", { name: "Continuă" }).click();
+  await page.getByLabel("Orașul principal în care lucrezi").fill("Pitesti");
+  await page.getByRole("button", { name: "Continuă" }).click();
+  await page.getByRole("button", { name: "Continuă" }).click();
+  await page.getByLabel("Valoare comision").fill("10");
+  await page.getByRole("button", { name: "Continuă" }).click();
+  await page.getByLabel("Consum aproximativ").pressSequentially("8,5");
+  await page.getByRole("button", { name: "Continuă" }).click();
+  await page.getByRole("button", { name: "Confirmă configurația" }).click();
+
+  // Scris cu tastatura, cu virgulă, exact cum face un șofer.
+  await page.getByLabel("Plăți pentru curse în aplicație").pressSequentially("1.225,78");
+  await page.getByLabel("Comision Bolt").pressSequentially("200,5");
+  await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("1.225,78");
+  await expect(page.locator(".earnings-total")).toHaveText(/1\.025,28 RON/);
+  await page.getByLabel("Kilometri parcurși").pressSequentially("100");
+  await page.getByLabel(/Prețul din ziua respectivă/).pressSequentially("7,49");
+  // 100 km × 8,5 l/100 km × 7,49 lei = 63,67 lei.
+  await expect(page.locator(".calculation-preview")).toContainText("63,67 RON");
 });

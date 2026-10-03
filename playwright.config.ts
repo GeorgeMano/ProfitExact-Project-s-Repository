@@ -12,6 +12,11 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      // Majoritatea utilizatorilor vor folosi aplicația pe telefon.
+      name: "telefon",
+      use: { ...devices["Pixel 7"] },
+    },
   ],
   webServer: {
     command: "npm run dev -- --port 3100",

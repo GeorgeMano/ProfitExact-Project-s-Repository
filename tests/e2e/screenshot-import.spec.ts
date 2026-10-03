@@ -71,18 +71,23 @@ test("completează săptămâna din fotografia ecranului Bolt", async ({ page, c
   await page.getByLabel("Captură Bolt").setInputFiles(photo);
   await expect(page.locator(".screenshot-import-status.ok")).toBeVisible({ timeout: 90_000 });
 
-  await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("803.9");
+  await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("803,9");
   await expect(page.getByLabel("Campanii")).toHaveValue("9");
   await expect(page.getByLabel("Taxe de anulare")).toHaveValue("24");
   await expect(page.getByLabel("Bacșiș în aplicație")).toHaveValue("20");
-  await expect(page.getByLabel("Plăți pentru curse în numerar")).toHaveValue("566.3");
-  await expect(page.getByLabel("Credite și promoții pentru utilizatori")).toHaveValue("198.3");
-  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395.72");
+  await expect(page.getByLabel("Plăți pentru curse în numerar")).toHaveValue("566,3");
+  await expect(page.getByLabel("Credite și promoții pentru utilizatori")).toHaveValue("198,3");
+  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395,72");
 
   // Aceleași totaluri ca în aplicația Bolt, fără nicio rubrică de verificat.
   await expect(page.locator(".earnings-total")).toHaveText(/1\.225,78 RON/);
   await expect(page.locator(".earnings-cash-pill.card")).toHaveText(/659,48 RON/);
   await expect(page.locator(".needs-check")).toHaveCount(0);
+
+  // Textul exact citit din fotografie, cu tot cu zgomotul OCR-ului.
+  await page.getByText("Vezi textul citit din captură").click();
+  await expect(page.locator(".ocr-raw pre")).toContainText("Comision Bolt");
+  await page.locator(".screenshot-import").screenshot({ path: "test-results/text-citit-bolt.png" });
 
   // Utilizatorul confirmă și salvează.
   await page.getByRole("button", { name: "Salvează săptămâna" }).click();
@@ -103,7 +108,7 @@ test("din formularul zilei, captura săptămânală duce în săptămâna din ca
 
   await expect(page.getByRole("heading", { name: "Centralizarea săptămânii" })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByLabel("Alege o zi din săptămână")).toHaveValue("2026-08-31");
-  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395.72");
+  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395,72");
   await expect(page.locator(".earnings-total")).toHaveText(/1\.225,78 RON/);
   await expect(page.getByText("Perioada din captură: 31.08.2026 – 06.09.2026.")).toBeVisible();
 
@@ -134,5 +139,5 @@ test("o captură de săptămână încărcată ca „O zi” e recunoscută", as
 
   await page.getByRole("button", { name: "Folosește captura pentru toată săptămâna" }).click();
   await expect(page.getByRole("heading", { name: "Centralizarea săptămânii" })).toBeVisible();
-  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395.72");
+  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395,72");
 });

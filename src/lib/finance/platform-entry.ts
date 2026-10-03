@@ -22,7 +22,15 @@ import {
  * cu `distributeAmount`, care garantează că suma părților este exact totalul.
  */
 
-export type PlatformKey = "bolt" | "uber";
+/** Aplicațiile de livrări. Nu au comision de aplicație pentru curier. */
+export type DeliveryPlatform = "glovo" | "wolt" | "bolt_food";
+export type PlatformKey = "bolt" | "uber" | DeliveryPlatform;
+
+export const deliveryPlatforms: DeliveryPlatform[] = ["glovo", "wolt", "bolt_food"];
+
+export function isDeliveryPlatform(platform: PlatformKey): platform is DeliveryPlatform {
+  return (deliveryPlatforms as PlatformKey[]).includes(platform);
+}
 
 /**
  * Ce introduce șoferul, rând cu rând, din ecranul „Defalcarea câștigurilor”
@@ -58,6 +66,12 @@ export interface PlatformEntryInput {
   /** Bacșiș numerar primit în afara aplicației. Rămâne integral la șofer. */
   cashTips: number;
   kilometers: number;
+  /** Livrări finalizate (delivery). Informativ: nu intră în calculul banilor. */
+  deliveries?: number;
+  /** Livrări anulate (Glovo). Informativ. */
+  cancelledDeliveries?: number;
+  /** Ore online în aplicație (Glovo), în ore cu zecimale. Informativ. */
+  hoursOnline?: number;
 }
 
 /** Totalurile afișate de aplicație, calculate din rândurile introduse. */
@@ -167,6 +181,11 @@ export interface PlatformBreakdownInput {
   fleetCommission: FleetCommission;
   /** Totalul introdus în modul `shared`. Ignorat în modul `per_platform`. */
   sharedKilometers?: number | null;
+  /**
+   * La „Ambele”: comisionul fiecărei aplicații (ridesharing și delivery pot
+   * avea procente diferite). Lipsă = `fleetCommission` pentru toate.
+   */
+  commissionFor?: (platform: PlatformKey) => FleetCommission;
 }
 
 export function calculatePlatformBreakdown(
@@ -241,10 +260,18 @@ export function calculatePlatformBreakdown(
           totalCommissionBase * (nonNegative(input.fleetCommission.value) / 100),
         );
 
-  const fleetParts = distributeAmount(
-    totalFleetCommission,
-    commissionBases.map((value) => Math.max(0, value)),
-  );
+  const fleetParts = input.commissionFor
+    ? base.map((item) => {
+        // Fiecare aplicație cu procentul ei; comisionul fix rămâne cost comun.
+        const commission = input.commissionFor!(item.entry.platform);
+        if (commission.type === "fixed") return 0;
+        const itemBase = fleetCommissionBase(commission, item.netEarnings, item.applicationCommission, item.platformCosts);
+        return roundMoney(Math.max(0, itemBase) * (nonNegative(commission.value) / 100));
+      })
+    : distributeAmount(
+        totalFleetCommission,
+        commissionBases.map((value) => Math.max(0, value)),
+      );
 
   return base.map((item, index) => {
     const kilometers = kilometersByEntry[index] ?? 0;
@@ -334,6 +361,18 @@ export function platformsFor(choice: "bolt" | "uber" | "bolt_uber"): PlatformKey
   return choice === "bolt_uber" ? ["bolt", "uber"] : [choice];
 }
 
+/** Aplicațiile din configurație: Bolt/Uber la ridesharing, cele alese la delivery. */
+export function platformsForConfig(config: {
+  activity: "ridesharing" | "delivery" | "both";
+  platform: "bolt" | "uber" | "bolt_uber";
+  deliveryPlatforms: DeliveryPlatform[];
+}): PlatformKey[] {
+  const delivery = deliveryPlatforms.filter((platform) => config.deliveryPlatforms.includes(platform));
+  if (config.activity === "delivery") return delivery;
+  if (config.activity === "both") return [...platformsFor(config.platform), ...delivery];
+  return platformsFor(config.platform);
+}
+
 export function emptyPlatformEntry(platform: PlatformKey): PlatformEntryInput {
   return {
     platform,
@@ -344,7 +383,8 @@ export function emptyPlatformEntry(platform: PlatformKey): PlatformEntryInput {
     cashRidePayments: 0,
     userCredits: 0,
     platformCosts: 0,
-    applicationCommission: null,
+    // Aplicațiile de livrări nu iau comision de la curier.
+    applicationCommission: isDeliveryPlatform(platform) ? 0 : null,
     cashTips: 0,
     kilometers: 0,
   };

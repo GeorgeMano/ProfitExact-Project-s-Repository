@@ -4,6 +4,7 @@ import {
   calculateDailyResult,
   calculateFinancialResult,
   roundMoney,
+  type FleetCommission,
 } from "./daily-result";
 import {
   manualPeriodId,
@@ -14,6 +15,8 @@ import {
   calculatePlatformBreakdown,
   combinePlatformEntries,
   hasRequiredEarnings,
+  isDeliveryPlatform,
+  type PlatformKey,
   type PlatformEnergyBasis,
   type PlatformEntryInput,
 } from "./platform-entry";
@@ -80,6 +83,36 @@ export function sharedKilometersFor(
     : null;
 }
 
+/** La „Ambele”, comisionul fiecărei aplicații; altfel lipsește. */
+export function commissionForConfig(config: OnboardingConfig) {
+  if (config.activity !== "both" || !config.deliveryFleetCommission) return undefined;
+  const delivery = config.deliveryFleetCommission;
+  return (platform: PlatformKey): FleetCommission =>
+    isDeliveryPlatform(platform) ? delivery : config.fleetCommission;
+}
+
+/**
+ * Comisionul total al zilei sau al perioadei. Cu procente diferite pe
+ * activități, suma lor se trece mai departe ca sumă fixă calculată.
+ */
+function effectiveFleetCommission(
+  config: OnboardingConfig,
+  platforms: PlatformEntryInput[],
+  breakdown: { fleetCommission: number }[],
+): FleetCommission {
+  const commissionFor = commissionForConfig(config);
+  if (!commissionFor) return config.fleetCommission;
+  let total = breakdown.reduce((sum, item) => sum + item.fleetCommission, 0);
+  const groups = [
+    { commission: config.fleetCommission, present: platforms.some((entry) => !isDeliveryPlatform(entry.platform)) },
+    { commission: config.deliveryFleetCommission!, present: platforms.some((entry) => isDeliveryPlatform(entry.platform)) },
+  ];
+  for (const group of groups) {
+    if (group.present && group.commission.type === "fixed") total += Math.max(0, group.commission.value);
+  }
+  return { type: "fixed", value: roundMoney(total) };
+}
+
 export function calculateWorkDay(config: OnboardingConfig, input: WorkDayInput) {
   const recurringCosts = allocateRecurringCosts(config.recurringCosts, input.date);
   const recurringDailyTotal = recurringCosts.reduce((sum, cost) => sum + cost.dailyAmount, 0);
@@ -94,22 +127,23 @@ export function calculateWorkDay(config: OnboardingConfig, input: WorkDayInput) 
   const combined = combinePlatformEntries(input.platforms, sharedKilometers);
   const energyBasis = energyBasisFor(config, input.inputs);
 
-  const result = calculateDailyResult({
-    ...combined,
-    privateEarnings: input.privateEarnings,
-    energy: energyBasis,
-    fleetCommission: config.fleetCommission,
-    weeklyCimCost: config.weeklyCimCost,
-    recurringDailyCosts: recurringDailyTotal,
-    recurringFleetCosts: recurringFleetTotal,
-    oneOffDailyCosts: oneOffTotal(input.inputs),
-  });
-
   const breakdown = calculatePlatformBreakdown({
     entries: input.platforms,
     energy: energyBasis,
     fleetCommission: config.fleetCommission,
     sharedKilometers,
+    commissionFor: commissionForConfig(config),
+  });
+
+  const result = calculateDailyResult({
+    ...combined,
+    privateEarnings: input.privateEarnings,
+    energy: energyBasis,
+    fleetCommission: effectiveFleetCommission(config, input.platforms, breakdown),
+    weeklyCimCost: config.weeklyCimCost,
+    recurringDailyCosts: recurringDailyTotal,
+    recurringFleetCosts: recurringFleetTotal,
+    oneOffDailyCosts: oneOffTotal(input.inputs),
   });
 
   return {
@@ -211,6 +245,7 @@ export function calculateManualPeriod(
     energy: energyBasis,
     fleetCommission: config.fleetCommission,
     sharedKilometers,
+    commissionFor: commissionForConfig(config),
   });
   const canCalculate = hasRequiredEarnings(values.platforms);
   const result = canCalculate
@@ -218,7 +253,7 @@ export function calculateManualPeriod(
         ...combined,
         privateEarnings: values.privateEarnings,
         energyCost,
-        fleetCommission: config.fleetCommission,
+        fleetCommission: effectiveFleetCommission(config, values.platforms, breakdown),
         cimCost: calendarCosts.cimCost,
         recurringCosts: calendarCosts.recurringCosts,
         recurringFleetCosts: calendarCosts.recurringFleetCosts,

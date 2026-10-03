@@ -2,7 +2,7 @@ import type { OnboardingConfig } from "@/domain/onboarding";
 import type { SavedManualPeriod } from "@/lib/finance/manual-period";
 import {
   emptyPlatformEntry,
-  platformsFor,
+  platformsForConfig,
   type PlatformEntryInput,
   type PlatformKey,
 } from "@/lib/finance/platform-entry";
@@ -45,6 +45,9 @@ export interface PlatformEarningsRow {
   application_commission: number | string | null;
   cash_tips: number | string | null;
   kilometers: number | string | null;
+  deliveries?: number | string | null;
+  cancelled_deliveries?: number | string | null;
+  hours_online?: number | string | null;
 }
 
 export interface EnergyRow {
@@ -93,6 +96,9 @@ function platformInput(platform: PlatformKey, row: PlatformEarningsRow | undefin
     applicationCommission: optionalAmount(row.application_commission),
     cashTips: amount(row.cash_tips),
     kilometers: amount(row.kilometers),
+    ...(amount(row.deliveries) > 0 ? { deliveries: Math.round(amount(row.deliveries)) } : {}),
+    ...(amount(row.cancelled_deliveries) > 0 ? { cancelledDeliveries: Math.round(amount(row.cancelled_deliveries)) } : {}),
+    ...(amount(row.hours_online) > 0 ? { hoursOnline: amount(row.hours_online) } : {}),
   };
 }
 
@@ -120,7 +126,7 @@ function inputsFor(
 }
 
 export function rebuildHistory(config: OnboardingConfig, rows: HistoryRows) {
-  const keys = platformsFor(config.platform);
+  const keys = platformsForConfig(config);
   const savedDays: SavedWorkDay[] = [];
   const manualPeriods: SavedManualPeriod[] = [];
   let skipped = 0;

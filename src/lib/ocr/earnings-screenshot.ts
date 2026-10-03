@@ -43,6 +43,8 @@ export interface ScreenshotReading {
   recognized: boolean;
   /** Perioada scrisă în captură („31 aug. - 6 sept.” sau „2 oct.”), dacă s-a găsit. */
   period: { startDate: string; endDate: string } | null;
+  /** Textul brut scos de OCR din imagine, arătat utilizatorului la cerere. */
+  rawText?: string;
 }
 
 const MONTHS: Record<string, number> = {

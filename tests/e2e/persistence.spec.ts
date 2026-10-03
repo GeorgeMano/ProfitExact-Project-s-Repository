@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { clickTopAction } from "./menu";
 
 /**
  * Verifică promisiunea centrală a salvării de test: în modul de depanare local
@@ -110,9 +111,9 @@ test("perioada introdusă manual supraviețuiește reîncărcării", async ({ pa
   await page.getByRole("button", { name: "Săptămânal" }).click();
   await page.getByLabel("Alege o zi din săptămână").fill("2026-10-14");
   await expect(page.getByRole("heading", { name: /introdus de tine/ })).toBeVisible();
-  await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("803.9");
-  await expect(page.getByLabel("Credite și promoții pentru utilizatori")).toHaveValue("198.3");
-  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395.72");
+  await expect(page.getByLabel("Plăți pentru curse în aplicație")).toHaveValue("803,9");
+  await expect(page.getByLabel("Credite și promoții pentru utilizatori")).toHaveValue("198,3");
+  await expect(page.getByLabel("Comision Bolt")).toHaveValue("395,72");
 });
 
 test("butonul de ștergere readuce aplicația la prima pagină", async ({ page }) => {
@@ -120,7 +121,7 @@ test("butonul de ștergere readuce aplicația la prima pagină", async ({ page }
   await createDemoAccount(page);
   await completeOnboarding(page);
 
-  await page.getByRole("button", { name: "Șterge datele de test" }).click();
+  await clickTopAction(page, "Șterge datele de test");
   await expect(page.getByRole("heading", { name: /Știi cât încasezi/ })).toBeVisible();
 
   // Ștergerea trebuie să fie definitivă, nu doar o schimbare de ecran.

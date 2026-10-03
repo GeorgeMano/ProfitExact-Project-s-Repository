@@ -93,7 +93,7 @@ test("ziua salvată se deschide înapoi cu toate valorile introduse", async ({ p
   await expect(page.getByLabel("Kilometri parcurși")).toHaveValue("180");
   await expect(page.getByLabel("Câte ore ai lucrat azi?")).toHaveValue("8");
   // Prețul unitar și cheltuiala punctuală sunt exact ce se pierdea înainte.
-  await expect(page.getByLabel("Prețul din ziua respectivă / litru")).toHaveValue("7.2");
+  await expect(page.getByLabel("Prețul din ziua respectivă / litru")).toHaveValue("7,2");
   await expect(page.getByLabel("Ai spălat mașina azi?")).toBeChecked();
   await expect(page.getByLabel("Suma plătită la spălătorie")).toHaveValue("20");
 });

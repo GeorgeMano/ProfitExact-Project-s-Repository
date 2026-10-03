@@ -21,12 +21,16 @@ import {
 const config: OnboardingConfig = {
   activity: "ridesharing",
   workMode: "employee",
+  legalForm: null,
+  taxRegime: null,
   platform: "bolt",
+  deliveryPlatforms: [],
   cityName: "Cluj-Napoca",
   cityKey: "cluj-napoca",
   profitView: "together",
   kilometerEntry: "per_platform",
   vehicleOwnership: "rented",
+  vehicleType: "car",
   fuelType: "gasoline_lpg",
   hybridType: null,
   primaryFuel: "lpg",
@@ -152,6 +156,57 @@ describe("validarea configurației de onboarding", () => {
   });
 });
 
+describe("propriul SRL / PFA", () => {
+  const ownBusiness = {
+    ...config,
+    workMode: "own_business",
+    legalForm: "srl",
+    taxRegime: "micro",
+    recurringCosts: [
+      { id: "arr", category: "arr_authorization", label: "Autorizație ARR", amount: 100, period: "annual", effectiveFrom: "2026-09-01", paidToFleet: true },
+    ],
+  };
+
+  it("păstrează forma firmei și modul de impozitare", () => {
+    const parsed = parseOnboardingConfig(ownBusiness);
+
+    expect(parsed?.workMode).toBe("own_business");
+    expect(parsed?.legalForm).toBe("srl");
+    expect(parsed?.taxRegime).toBe("micro");
+  });
+
+  it("nu păstrează nimic legat de flotă", () => {
+    const parsed = parseOnboardingConfig(ownBusiness);
+
+    expect(parsed?.fleetCommission).toEqual({ type: "fixed", value: 0 });
+    expect(parsed?.weeklyCimCost).toBe(0);
+    expect(parsed?.recurringCosts[0].paidToFleet).toBe(false);
+  });
+
+  it("cere forma firmei", () => {
+    expect(parseOnboardingConfig({ ...ownBusiness, legalForm: null })).toBeNull();
+  });
+
+  it("păstrează și modul de impozitare al PFA-ului", () => {
+    expect(parseOnboardingConfig({ ...ownBusiness, legalForm: "pfa", taxRegime: "norm" })?.taxRegime).toBe("norm");
+    expect(parseOnboardingConfig({ ...ownBusiness, legalForm: "pfa", taxRegime: "real" })?.taxRegime).toBe("real");
+  });
+
+  it("ignoră un mod de impozitare care nu se potrivește formei firmei", () => {
+    expect(parseOnboardingConfig({ ...ownBusiness, legalForm: "pfa", taxRegime: "micro" })?.taxRegime).toBeNull();
+    expect(parseOnboardingConfig({ ...ownBusiness, taxRegime: "norm" })?.taxRegime).toBeNull();
+    expect(parseOnboardingConfig({ ...config, taxRegime: "micro" })?.taxRegime).toBeNull();
+  });
+
+  it("citește configurațiile vechi, fără forma de lucru, ca angajat", () => {
+    const { workMode: _workMode, legalForm: _legalForm, taxRegime: _regime, ...legacy } = config;
+    const parsed = parseOnboardingConfig(legacy);
+
+    expect(parsed?.workMode).toBe("employee");
+    expect(parsed?.legalForm).toBeNull();
+  });
+});
+
 describe("defalcarea pe platformă dintr-o zi salvată", () => {
   const platforms = [
     {
@@ -218,7 +273,7 @@ describe("defalcarea pe platformă dintr-o zi salvată", () => {
     // preferabil să lipsească decât să fie incompletă.
     const restored = parseSavedWorkDay({
       ...day,
-      platforms: [platforms[0], { platform: "glovo" }],
+      platforms: [platforms[0], { platform: "necunoscuta" }],
     });
 
     expect(restored?.platforms).toBeUndefined();
